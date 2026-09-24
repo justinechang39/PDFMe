@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+configuration="${CONFIGURATION:-release}"
+swift build -c "$configuration"
+bin_dir="$(swift build -c "$configuration" --show-bin-path)"
+app="dist/PDFMe.app"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+cp "$bin_dir/PDFMe" "$app/Contents/MacOS/PDFMe"
+cp Resources/Info.plist "$app/Contents/Info.plist"
+cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+cp LICENSE "$app/Contents/Resources/LICENSE"
+/usr/bin/codesign --force --deep --sign "${CODE_SIGN_IDENTITY:--}" "$app"
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "dist/PDFMe-macOS-$(uname -m).zip"
+echo "Built $app"
