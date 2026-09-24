@@ -7,7 +7,6 @@ final class StatusDropView: NSView {
     var clicked: (() -> Void)?
     var dropped: (([URL]) -> Void)?
     var highlighted = false { didSet { needsDisplay = true } }
-    var busy = false { didSet { needsDisplay = true } }
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
@@ -19,15 +18,9 @@ final class StatusDropView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func draw(_ dirtyRect: NSRect) {
         if highlighted {
-            NSColor.selectedContentBackgroundColor.setFill()
+            NSColor.controlAccentColor.withAlphaComponent(0.25).setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 5, yRadius: 5).fill()
         }
-        let name = busy ? "doc.badge.clock" : "doc.badge.arrow.up"
-        let symbol = NSImage(systemSymbolName: name, accessibilityDescription: "PDFMe")!
-        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        let image = symbol.withSymbolConfiguration(config)!
-        image.isTemplate = true
-        image.draw(in: NSRect(x: (bounds.width - 20) / 2, y: (bounds.height - 20) / 2, width: 20, height: 20))
     }
     override func mouseDown(with event: NSEvent) { clicked?() }
     override func accessibilityPerformPress() -> Bool { clicked?(); return true }
@@ -56,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         statusItem = NSStatusBar.system.statusItem(withLength: 34)
         statusItem.autosaveName = "PDFMe"
         if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "doc.badge.arrow.up", accessibilityDescription: "PDFMe")
+            button.image?.isTemplate = true
             dropView = StatusDropView(frame: button.bounds)
             dropView.autoresizingMask = [.width, .height]
             button.addSubview(dropView)
@@ -64,12 +59,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 420, height: 690)
+        popover.contentSize = NSSize(width: 420, height: 590)
         popover.contentViewController = NSHostingController(rootView: ContentView(model: model))
         model.show = { [weak self] in self?.showPopover() }
-        model.progressChanged = { [weak self] busy in self?.dropView.busy = busy }
+        model.progressChanged = { [weak self] busy in
+            self?.statusItem.button?.image = NSImage(systemSymbolName: busy ? "doc.badge.clock" : "doc.badge.arrow.up", accessibilityDescription: busy ? "PDFMe is converting" : "PDFMe")
+            self?.statusItem.button?.image?.isTemplate = true
+        }
         if CommandLine.arguments.contains("--preview") {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 690), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 590), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "PDFMe"
             window.contentView = NSHostingView(rootView: ContentView(model: model))
             window.center(); window.makeKeyAndOrderFront(nil)

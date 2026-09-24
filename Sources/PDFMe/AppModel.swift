@@ -116,10 +116,10 @@ final class AppModel: ObservableObject {
             for index in jobs.indices where !jobs[index].finished {
                 jobs[index].state = "Cancelled"; jobs[index].finished = true
             }
-            if Task.isCancelled { inform("Conversion stopped. Finished PDFs are ready below.") }
+            if Task.isCancelled { inform("Conversion cancelled. Completed PDFs are listed below.") }
             else if failures > 0 { inform("\(completed) ready · \(failures) couldn’t be converted.", error: true) }
-            else if completed > 0 { inform(completed == 1 ? "Your PDF is ready. Just like that." : "All \(completed) PDFs are ready. Just like that.") }
-            else { inform("Nothing saved. You can try again anytime.") }
+            else if completed > 0 { inform(completed == 1 ? "PDF created" : "\(completed) PDFs created") }
+            else { inform("No PDFs saved") }
             if completed > 0 { notify(completed, failures: failures) }
         }
     }
@@ -130,7 +130,7 @@ final class AppModel: ObservableObject {
     private func requestPassword() -> String? {
         let alert = NSAlert()
         alert.messageText = "Protect your PDF"
-        alert.informativeText = "Enter a password to open \(protect ? "these PDFs" : "the PDF"). It applies to this batch only and isn’t saved. Keep it somewhere safe."
+        alert.informativeText = "Enter a password to open \(protect ? "these PDFs" : "the PDF"). It applies to this batch only and isn’t saved. "
         alert.addButton(withTitle: "Create PDF")
         alert.addButton(withTitle: "Cancel")
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 66))
@@ -155,7 +155,7 @@ final class AppModel: ObservableObject {
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
-            content.title = count == 1 ? "Your PDF is ready" : "\(count) PDFs are ready"
+            content.title = count == 1 ? "PDF created" : "\(count) PDFs created"
             content.body = failures > 0 ? "Some files need attention. Open PDFMe to see the results." : "Saved to your chosen location. Open PDFMe to reveal in Finder."
             content.sound = .default
             UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))

@@ -21,7 +21,6 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     if model.settings { settingsView.transition(.opacity.combined(with: .move(edge: .trailing))) }
                     else {
-                        if model.jobs.isEmpty { introduction }
                         dropZone
                         if !model.engineReady { engineNotice }
                         if let message = model.message { banner(message) }
@@ -32,7 +31,7 @@ struct ContentView: View {
             }.scrollIndicators(.hidden)
             footer
         }
-        .frame(width: 420, height: 690)
+        .frame(width: 420, height: 590)
         .background(paper)
         .foregroundStyle(ink)
         .tint(moss)
@@ -49,7 +48,6 @@ struct ContentView: View {
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(moss)
                 .frame(width: 36, height: 36).background(moss.opacity(0.09), in: RoundedRectangle(cornerRadius: 11))
             Text("PDFMe").font(.system(size: 20, weight: .semibold, design: .rounded))
-            Text("a little less work.").font(.system(size: 11)).foregroundStyle(muted)
             Spacer()
             Button { withAnimation { model.settings.toggle() } } label: {
                 Image(systemName: model.settings ? "xmark" : "slider.horizontal.3")
@@ -59,15 +57,6 @@ struct ContentView: View {
         }.padding(.horizontal, 22).padding(.vertical, 18)
         .background(Color.white.opacity(0.4))
         .overlay(alignment: .bottom) { Rectangle().fill(ink.opacity(0.07)).frame(height: 1) }
-    }
-
-    private var introduction: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("FROM WORD TO DONE").font(.system(size: 9, weight: .semibold, design: .monospaced)).tracking(2).foregroundStyle(moss)
-            Text("Make it a PDF.").font(.system(size: 34, weight: .regular, design: .serif)).tracking(-1)
-            Text("Drop your document. We’ll take it from here.")
-                .font(.system(size: 13)).foregroundStyle(muted)
-        }
     }
 
     private var dropZone: some View {
@@ -80,9 +69,9 @@ struct ContentView: View {
                         .font(.system(size: 23, weight: .medium)).foregroundStyle(moss).offset(x: 12, y: 3)
                 }.frame(height: 65).scaleEffect(targeted || hovering ? 1.07 : 1)
                 VStack(spacing: 6) {
-                    Text(targeted ? "Let it go. We’ve got it." : model.busy ? "A little magic in progress…" : "Create PDF")
+                    Text(targeted ? "Drop to convert" : model.busy ? "Converting…" : "Create PDF")
                         .font(.system(size: 17, weight: .semibold))
-                    Text(model.busy ? "Your documents are being converted locally" : "Drop DOCX files here, or click to browse")
+                    Text(model.busy ? "Processing documents locally" : "Drop DOCX files here, or click to browse")
                         .font(.system(size: 11)).foregroundStyle(muted)
                 }
                 HStack(spacing: 5) {
@@ -106,7 +95,7 @@ struct ContentView: View {
 
     private var options: some View {
         VStack(alignment: .leading, spacing: 13) {
-            HStack { Text("THE FINISHING TOUCHES").font(.system(size: 9, weight: .semibold, design: .monospaced)).tracking(1.5); Spacer() }
+            HStack { Text("OPTIONS").font(.system(size: 9, weight: .semibold, design: .monospaced)).tracking(1.5); Spacer() }
                 .foregroundStyle(muted)
             VStack(spacing: 0) {
                 HStack {
@@ -126,7 +115,7 @@ struct ContentView: View {
                 .disabled(model.busy)
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "arrow.turn.down.right").font(.system(size: 10)).padding(.top, 1)
-                Text(model.askEveryTime ? "You’ll pick a save location for every document." : "Saved beside the original. Existing files stay safe.")
+                Text(model.askEveryTime ? "Choose a save location for each PDF" : "Save beside the original document")
                     .font(.system(size: 10))
             }.foregroundStyle(muted)
         }
@@ -158,7 +147,7 @@ struct ContentView: View {
     private var results: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(model.busy ? "MAKING IT HAPPEN" : "YOUR DOCUMENTS")
+                Text(model.busy ? "CONVERTING" : "RESULTS")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced)).tracking(1.5).foregroundStyle(muted)
                 Spacer()
                 if model.busy {
@@ -191,8 +180,8 @@ struct ContentView: View {
 
     private var engineNotice: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("One small setup step", systemImage: "arrow.down.circle").font(.system(size: 13, weight: .semibold))
-            Text("PDFMe uses LibreOffice to read Word documents. Install it in Applications, then you’re ready.").font(.system(size: 11)).foregroundStyle(muted)
+            Label("Install LibreOffice", systemImage: "arrow.down.circle").font(.system(size: 13, weight: .semibold))
+            Text("Install LibreOffice in Applications to enable DOCX conversion.").font(.system(size: 11)).foregroundStyle(muted)
             HStack {
                 Link("Get LibreOffice ↗", destination: URL(string: "https://www.libreoffice.org/download/download-libreoffice/")!)
                 Spacer()
@@ -203,10 +192,10 @@ struct ContentView: View {
 
     private var settingsView: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Text("The little details.").font(.system(size: 30, design: .serif))
+            Text("Settings").font(.system(size: 30, design: .serif))
             options
             VStack(alignment: .leading, spacing: 12) {
-                Text("A quality for every occasion").font(.system(size: 14, weight: .semibold))
+                Text("Image quality").font(.system(size: 14, weight: .semibold))
                 ForEach(PDFQuality.allCases, id: \.self) { quality in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(quality.rawValue).font(.system(size: 12, weight: .medium))
@@ -217,8 +206,8 @@ struct ContentView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Label("On your Mac. In your control.", systemImage: "lock.shield").font(.system(size: 13, weight: .medium))
-                Text("No uploads, accounts, or analytics. LibreOffice handles conversion locally. Fonts and complex Word layouts can look slightly different; give important documents a quick check.").font(.system(size: 11)).foregroundStyle(muted)
+                Label("Local processing", systemImage: "lock.shield").font(.system(size: 13, weight: .medium))
+                Text("No uploads, accounts, or analytics. LibreOffice handles conversion locally. Fonts and complex Word layouts can look slightly different; review important documents after conversion.").font(.system(size: 11)).foregroundStyle(muted)
                 Text("Passwords are used for one batch and never stored. Password protection is applied by macOS PDFKit.").font(.system(size: 11)).foregroundStyle(muted)
             }
             HStack {
@@ -227,14 +216,14 @@ struct ContentView: View {
                 Spacer()
                 Button("Check", action: model.refreshEngine).font(.system(size: 11)).buttonStyle(.plain)
             }
-            Link("Open source, with love ↗", destination: URL(string: "https://github.com/justinechang39/PDFMe")!).font(.system(size: 12))
+            Link("Source code ↗", destination: URL(string: "https://github.com/justinechang39/PDFMe")!).font(.system(size: 12))
         }
     }
 
     private var footer: some View {
         HStack(spacing: 5) {
             Circle().fill(moss).frame(width: 5, height: 5)
-            Text("LOCAL BY NATURE").font(.system(size: 8, weight: .medium, design: .monospaced)).tracking(1.3)
+            Text("PROCESSED LOCALLY").font(.system(size: 8, weight: .medium, design: .monospaced)).tracking(1.3)
             Spacer()
             Text("v1.0").font(.system(size: 10)).foregroundStyle(muted)
             Menu {

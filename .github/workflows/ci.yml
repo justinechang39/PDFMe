@@ -3,11 +3,17 @@ on:
   push:
     branches: [main]
   pull_request:
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   macos:
     runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Install conversion engine

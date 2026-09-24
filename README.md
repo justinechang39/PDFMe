@@ -1,14 +1,14 @@
 <div align="center">
   <img src="docs/icon.png" width="100" alt="PDFMe icon">
   <h1>PDFMe</h1>
-  <p><strong>From Word to done.</strong></p>
-  <p>A small, native macOS menu bar app that turns DOCX files into PDFs.<br>Drop a document. Get on with your day.</p>
+  <p><strong>DOCX to PDF from your menu bar.</strong></p>
+  <p>A small, native macOS menu bar app that turns DOCX files into PDFs.<br>Local conversion with LibreOffice.</p>
   <p><a href="https://github.com/justinechang39/PDFMe/releases/latest">Download</a> · <a href="#getting-started">Get started</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
   <p><img src="https://img.shields.io/badge/macOS-13%2B-416347" alt="macOS 13 or later"> <img src="https://img.shields.io/badge/Swift-native-416347" alt="Native Swift app"> <img src="https://img.shields.io/badge/license-MIT-416347" alt="MIT license"></p>
   <img src="docs/screenshot.png" width="420" alt="PDFMe’s cream and sage interface with a Create PDF drop zone, image quality presets, password protection, and save-location preferences">
 </div>
 
-## A little less work
+## Features
 
 - **Drop onto the menu bar icon** or the **Create PDF** panel. Click to browse, or use Finder’s **Open With → PDFMe**.
 - **DOCX only**, with helpful errors for unsupported or damaged files.
