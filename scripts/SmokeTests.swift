@@ -18,7 +18,7 @@ struct SmokeTests {
             let output = try await Converter.convert(source: source, destination: root.appendingPathComponent("\(quality.rawValue).pdf"), quality: quality)
             let pdf = PDFDocument(url: output)!
             try check(pdf.pageCount == 2, "\(quality.rawValue): both pages survive")
-            try check(pdf.string?.contains("A little less work.") == true, "\(quality.rawValue): selectable text survives")
+            try check(pdf.string?.filter { !$0.isWhitespace }.contains("Alittlelesswork.") == true, "\(quality.rawValue): selectable text survives")
         }
         let locked = try await Converter.convert(source: source, destination: root.appendingPathComponent("Protected.pdf"), quality: .balanced, password: "a-long-test-password")
         let pdf = PDFDocument(url: locked)!

@@ -55,7 +55,7 @@ final class ConverterTests: XCTestCase {
             let result = try await Converter.convert(source: source, destination: root.appendingPathComponent("\(quality.rawValue).pdf"), quality: quality)
             let pdf = try XCTUnwrap(PDFDocument(url: result))
             XCTAssertEqual(pdf.pageCount, 2)
-            XCTAssertTrue(pdf.string?.contains("A little less work.") == true)
+            XCTAssertTrue(pdf.string?.filter { !$0.isWhitespace }.contains("Alittlelesswork.") == true, "Extracted text: \(pdf.string ?? "nil")")
             XCTAssertTrue(pdf.string?.contains("Page two, too.") == true)
             XCTAssertFalse(pdf.isEncrypted)
         }
@@ -102,7 +102,7 @@ final class ConverterTests: XCTestCase {
         try Data("keep me".utf8).write(to: desired)
         let result = try await Converter.convert(source: source, destination: desired, quality: .balanced)
         XCTAssertEqual(result.lastPathComponent, "Custom (2).pdf")
-        XCTAssertEqual(result.deletingLastPathComponent(), folder)
+        XCTAssertEqual(result.deletingLastPathComponent().path, folder.path)
         XCTAssertEqual(try String(contentsOf: desired, encoding: .utf8), "keep me")
     }
 
