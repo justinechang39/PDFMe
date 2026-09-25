@@ -116,11 +116,10 @@ struct PrintReviewView: View {
                 Button { model.showTemplateEditor.toggle() } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(.plain).help("Manage templates").accessibilityLabel("Manage templates")
             }
             if !model.templates.isEmpty {
-                Picker("Saved template", selection: Binding(get: { model.selectedTemplateID ?? model.templates[0].id }, set: model.selectTemplate)) {
-                    ForEach(model.templates) { template in
-                        Text(template.name + (template.id == model.defaultTemplateID ? " · default" : "")).tag(template.id)
-                    }
-                }.labelsHidden().frame(maxWidth: .infinity)
+                FullWidthPicker(title: "Saved template",
+                                selection: Binding(get: { model.selectedTemplateID ?? model.templates[0].id }, set: model.selectTemplate),
+                                options: model.templates.map { ($0.id, $0.name + ($0.id == model.defaultTemplateID ? " · default" : "")) })
+                    .frame(maxWidth: .infinity)
             }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -128,44 +127,34 @@ struct PrintReviewView: View {
                     Spacer()
                     Button(action: model.refreshPrinters) { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain).help("Refresh printers").accessibilityLabel("Refresh printers")
                 }
-                Picker("Printer", selection: $model.template.printerID) {
-                    if !model.printers.contains(where: { $0.id == model.template.printerID }) { Text("Select printer").tag(model.template.printerID) }
-                    ForEach(model.printers) { Text($0.name).tag($0.id) }
-                }.labelsHidden().frame(maxWidth: .infinity)
+                FullWidthPicker(title: "Printer", selection: $model.template.printerID, options: printerOptions)
+                    .frame(maxWidth: .infinity)
             }
             if model.loadingPrinters || model.loadingCapabilities { HStack { ProgressView().controlSize(.small); Text("Reading printer options…").font(.system(size: 11)).foregroundStyle(.secondary) } }
             pickerField("Paper") {
-                Picker("Paper", selection: $model.template.paper) {
-                    ForEach(PrintPaper.allCases, id: \.self) { paper in
-                        Text(paper.rawValue + (model.capabilities != nil && !model.capabilities!.papers.contains(paper) ? " (unsupported)" : "")).tag(paper)
-                    }
-                }
+                FullWidthPicker(title: "Paper", selection: $model.template.paper, options: PrintPaper.allCases.map { paper in
+                    (paper, paper.rawValue + (model.capabilities != nil && !model.capabilities!.papers.contains(paper) ? " (unsupported)" : ""))
+                })
             }
             pickerField("Orientation") {
-                Picker("Orientation", selection: $model.template.orientation) {
-                    ForEach(PrintOrientation.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
+                FullWidthPicker(title: "Orientation", selection: $model.template.orientation, options: PrintOrientation.allCases.map { ($0, $0.rawValue) })
             }
             pickerField("Sides") {
-                Picker("Sides", selection: $model.template.duplex) { ForEach(PrintDuplex.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                FullWidthPicker(title: "Sides", selection: $model.template.duplex, options: PrintDuplex.allCases.map { ($0, $0.rawValue) })
             }
             pickerField("Pages per side") {
-                Picker("Pages per side", selection: $model.template.pagesPerSide) {
-                    Text("1").tag(1); Text("2").tag(2); Text("4").tag(4)
-                }
+                FullWidthPicker(title: "Pages per side", selection: $model.template.pagesPerSide, options: [1, 2, 4].map { ($0, String($0)) })
             }
             if model.template.pagesPerSide == 2 {
                 Label("Two pages side by side, in file order", systemImage: "rectangle.split.2x1").font(.system(size: 10)).foregroundStyle(.secondary)
             }
             pickerField("Color") {
-                Picker("Color", selection: $model.template.color) { ForEach(PrintColor.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                FullWidthPicker(title: "Color", selection: $model.template.color, options: PrintColor.allCases.map { ($0, $0.rawValue) })
             }
             Toggle("Print as image", isOn: $model.template.printAsImage).toggleStyle(.switch).controlSize(.small)
             if model.template.printAsImage {
                 pickerField("Image resolution") {
-                    Picker("Image resolution", selection: $model.template.dpi) {
-                        Text("150 dpi").tag(150); Text("300 dpi").tag(300); Text("600 dpi").tag(600)
-                    }
+                    FullWidthPicker(title: "Image resolution", selection: $model.template.dpi, options: [150, 300, 600].map { ($0, "\($0) dpi") })
                 }
             }
             Toggle("Start each PDF on a new sheet", isOn: $model.template.startEachFileOnNewSheet).toggleStyle(.switch).controlSize(.small)
@@ -186,6 +175,12 @@ struct PrintReviewView: View {
         }.font(.system(size: 12)).padding(14)
             .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
             .disabled(model.busy)
+    }
+
+    private var printerOptions: [(String, String)] {
+        let installed = model.printers.map { ($0.id, $0.name) }
+        return model.printers.contains(where: { $0.id == model.template.printerID })
+            ? installed : [(model.template.printerID, "Select printer")] + installed
     }
 
     private func pickerField<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
