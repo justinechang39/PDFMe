@@ -253,7 +253,7 @@ struct ContentView: View {
             Circle().fill(moss).frame(width: 5, height: 5)
             Text("PROCESSED LOCALLY").font(.system(size: 8, weight: .medium, design: .monospaced)).tracking(1.3)
             Spacer()
-            Text("v1.1").font(.system(size: 10)).foregroundStyle(muted)
+            Text("v1.1.1").font(.system(size: 10)).foregroundStyle(muted)
             Menu {
                 Button("About PDFMe") { model.settings = true }
                 Link("Source code", destination: URL(string: "https://github.com/justinechang39/PDFMe")!)

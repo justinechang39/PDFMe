@@ -42,6 +42,8 @@ Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or
 4. Click **Preview** to inspect the prepared sheet layout in macOS Preview.
 5. Click **Print** to send one job to the selected printer.
 
+After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s queue and cancellation controls. Previewing or a failed submission keeps the files for review.
+
 ### Templates
 
 The first time you open printing, PDFMe creates a basic template for your system default printer. If that printer supports A4 and duplex, it also creates **A4 · 2-up duplex**: A4 landscape, two portrait pages side by side, short-edge duplex, print as image at 300 dpi. No personal printer identifiers are bundled with the app.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- Clear PDFs and their copy counts after successful print submission to prevent accidental repeat jobs. Keep the submitted job’s queue and cancellation controls available.
+
 ## 1.1.0
 
 - Per-PDF copy counts, drag handles for ordering, and full-width pickers below their labels.

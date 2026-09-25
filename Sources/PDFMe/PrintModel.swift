@@ -209,6 +209,9 @@ final class PrintModel: ObservableObject {
                     submitting = true; stage = "Sending to printer"
                     let accepted = try await PrinterService.submit(file: output, template: snapshot, copies: 1)
                     submission = accepted
+                    // Remove the submitted batch immediately so reopening cannot print it again.
+                    inputs = []
+                    cleanup()
                     inform("Sent to \(accepted.printerName)")
                     notify(accepted.printerName)
                 }
