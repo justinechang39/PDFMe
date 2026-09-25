@@ -23,7 +23,7 @@
 
 Requires **macOS 13 or later**. DOCX conversion additionally requires [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) in `/Applications` or `~/Applications`. PDF printing uses the built-in macOS print system and an installed printer; LibreOffice is not needed for printing.
 
-1. Install LibreOffice (or run `brew install --cask libreoffice`). You do not need to open it for each conversion.
+1. For DOCX conversion, install LibreOffice (or run `brew install --cask libreoffice`). Printing PDFs does not require LibreOffice.
 2. Download the ZIP matching your Mac from [Releases](https://github.com/justinechang39/PDFMe/releases). `arm64` is for Apple silicon; `x86_64` is for Intel when available.
 3. Unzip and move **PDFMe.app** into Applications.
 4. Open PDFMe. Its document icon appears in the menu bar. Drop a `.docx` file on it.
@@ -36,7 +36,7 @@ Allow notifications when macOS asks if you want completion banners. Results also
 
 Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or the menu bar icon. Dropping files opens a review; it never prints automatically. DOCX files are rejected by the print target.
 
-1. Add PDFs and use the up/down controls to set the print order.
+1. Add the PDFs you want to print.
 2. Choose a saved template and the printer. Adjust settings for this job if needed.
 3. Set **Copies** on each PDF row. Drag the handle on the right to change the file order; each document’s copies stay together.
 4. Click **Preview** to inspect the prepared sheet layout in macOS Preview.
@@ -55,7 +55,7 @@ Use **Manage templates** (the sliders icon) to name a template, **Save** changes
 - Print as image and image resolution (150, 300, or 600 dpi).
 - Whether each PDF starts on a fresh physical sheet.
 
-Unsaved setting changes affect the current job only. Copy count is per job. A missing saved printer must be explicitly replaced; PDFMe does not silently redirect jobs to a different printer. Unsupported paper, color, or duplex options block submission instead of silently changing the template.
+Unsaved setting changes affect the current job only. Copy counts are set separately for each PDF in the current job and are not stored in templates. A missing saved printer must be explicitly replaced; PDFMe does not silently redirect jobs to a different printer. Unsupported paper, color, or duplex options block submission instead of silently changing the template.
 
 ### Layout and collation
 
