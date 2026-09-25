@@ -55,7 +55,7 @@ final class ConverterTests: XCTestCase {
             let result = try await Converter.convert(source: source, destination: root.appendingPathComponent("\(quality.rawValue).pdf"), quality: quality)
             let pdf = try XCTUnwrap(PDFDocument(url: result))
             XCTAssertEqual(pdf.pageCount, 2)
-            XCTAssertTrue(pdf.string?.filter { !$0.isWhitespace }.contains("Alittlelesswork.") == true, "Extracted text: \(pdf.string ?? "nil")")
+            XCTAssertTrue(pdf.string?.filter { !$0.isWhitespace }.contains("PDFconversiontest") == true, "Extracted text: \(pdf.string ?? "nil")")
             XCTAssertTrue(pdf.string?.contains("Page two, too.") == true)
             XCTAssertFalse(pdf.isEncrypted)
         }

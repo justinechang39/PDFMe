@@ -22,6 +22,8 @@ jobs:
         run: swift test
       - name: Standalone conversion checks
         run: ./scripts/test.sh
+      - name: Print layout checks (no physical printing)
+        run: ./scripts/test-print.sh
       - name: Build application
         run: ./scripts/build.sh
       - uses: actions/upload-artifact@v4

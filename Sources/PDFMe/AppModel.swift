@@ -30,10 +30,24 @@ final class AppModel: ObservableObject {
     @Published var messageIsError = false
     @Published var engineReady = Converter.engineURL != nil
     @Published var settings = false
+    @Published var printingMode = false
+    let printing = PrintModel()
     var task: Task<Void, Never>?
     var worker: Task<URL, Error>?
     var show: (() -> Void)?
     var progressChanged: ((Bool) -> Void)?
+
+    func route(_ urls: [URL]) {
+        if !urls.isEmpty && urls.allSatisfy({ $0.pathExtension.lowercased() == "pdf" }) {
+            openPrint(); printing.accept(urls)
+        } else if !urls.isEmpty && urls.allSatisfy({ $0.pathExtension.lowercased() == "docx" }) {
+            printingMode = false; settings = false; accept(urls)
+        } else {
+            printingMode = false; settings = false; show?()
+            inform("Drop DOCX files to create PDFs, or PDF files to print. Keep the two file types in separate batches.", error: true)
+        }
+    }
+    func openPrint() { printingMode = true; settings = false; show?() }
 
     func refreshEngine() { engineReady = Converter.engineURL != nil }
     func chooseFiles() {

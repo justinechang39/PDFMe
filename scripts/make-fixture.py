@@ -10,7 +10,7 @@ with ZipFile(path, 'w', ZIP_DEFLATED) as z:
     z.writestr('word/document.xml', '''<?xml version="1.0" encoding="UTF-8"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
 <w:p><w:r><w:rPr><w:color w:val="416347"/><w:b/><w:sz w:val="22"/></w:rPr><w:t>PDFMe / CONVERSION CHECK</w:t></w:r></w:p>
-<w:p><w:r><w:rPr><w:sz w:val="60"/><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/></w:rPr><w:t>A little less work.</w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="60"/><w:rFonts w:ascii="Helvetica" w:hAnsi="Helvetica"/></w:rPr><w:t>PDF conversion test</w:t></w:r></w:p>
 <w:p><w:r><w:t>This document checks text, formatting, tables, Unicode, and page breaks.</w:t></w:r></w:p>
 <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold stays bold. </w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>Italic stays italic.</w:t></w:r></w:p>
 <w:p><w:r><w:t>Unicode: café · résumé · こんにちは</w:t></w:r></w:p>

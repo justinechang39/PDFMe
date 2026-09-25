@@ -10,6 +10,9 @@ private let paper = Color(red: 0.97, green: 0.96, blue: 0.93)
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var printing: PrintModel
+    @State private var printTargeted = false
+    init(model: AppModel) { self.model = model; self.printing = model.printing }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var targeted = false
     @State private var hovering = false
@@ -19,9 +22,11 @@ struct ContentView: View {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if model.settings { settingsView.transition(.opacity.combined(with: .move(edge: .trailing))) }
+                    if model.printingMode { PrintReviewView(model: printing) }
+                    else if model.settings { settingsView.transition(.opacity.combined(with: .move(edge: .trailing))) }
                     else {
                         dropZone
+                        printDropZone
                         if !model.engineReady { engineNotice }
                         if let message = model.message { banner(message) }
                         if !model.jobs.isEmpty { results }
@@ -29,9 +34,9 @@ struct ContentView: View {
                     }
                 }.padding(24)
             }.scrollIndicators(.hidden)
-            footer
+            if model.printingMode { PrintActionBar(model: printing) } else { footer }
         }
-        .frame(width: 420, height: 590)
+        .frame(width: 420, height: 700)
         .background(paper)
         .foregroundStyle(ink)
         .tint(moss)
@@ -44,12 +49,15 @@ struct ContentView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
+            if model.printingMode {
+                Button { model.printingMode = false } label: { Image(systemName: "chevron.left") }.buttonStyle(.plain).help("Back").accessibilityLabel("Back to PDFMe")
+            }
             Image(systemName: "doc.badge.arrow.up")
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(moss)
                 .frame(width: 36, height: 36).background(moss.opacity(0.09), in: RoundedRectangle(cornerRadius: 11))
-            Text("PDFMe").font(.system(size: 20, weight: .semibold, design: .rounded))
+            Text(model.printingMode ? "Print PDF" : "PDFMe").font(.system(size: 20, weight: .semibold, design: .rounded))
             Spacer()
-            Button { withAnimation { model.settings.toggle() } } label: {
+            Button { withAnimation { if model.printingMode { printing.showTemplateEditor.toggle() } else { model.settings.toggle() } } } label: {
                 Image(systemName: model.settings ? "xmark" : "slider.horizontal.3")
                     .font(.system(size: 14, weight: .medium)).frame(width: 30, height: 30)
             }.buttonStyle(.plain).help(model.settings ? "Back to converter" : "Settings")
@@ -67,7 +75,7 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: 11).fill(Color.white).frame(width: 43, height: 56).rotationEffect(.degrees(9)).offset(x: 13, y: 2)
                     Image(systemName: model.busy ? "ellipsis" : "arrow.down")
                         .font(.system(size: 23, weight: .medium)).foregroundStyle(moss).offset(x: 12, y: 3)
-                }.frame(height: 65).scaleEffect(targeted || hovering ? 1.07 : 1)
+                }.frame(height: 45).scaleEffect(targeted || hovering ? 1.07 : 1)
                 VStack(spacing: 6) {
                     Text(targeted ? "Drop to convert" : model.busy ? "Converting…" : "Create PDF")
                         .font(.system(size: 17, weight: .semibold))
@@ -80,7 +88,7 @@ struct ContentView: View {
                 }.foregroundStyle(moss).padding(.horizontal, 9).padding(.vertical, 5)
                     .background(Color.white.opacity(0.65), in: Capsule())
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 24)
+            .frame(maxWidth: .infinity).padding(.vertical, 18)
             .background(targeted ? Color(red: 0.82, green: 0.88, blue: 0.77) : Color(red: 0.89, green: 0.92, blue: 0.85), in: RoundedRectangle(cornerRadius: 19))
             .overlay { RoundedRectangle(cornerRadius: 19).strokeBorder(moss.opacity(targeted ? 0.75 : 0.25), style: StrokeStyle(lineWidth: targeted ? 2 : 1, dash: [5, 5])).padding(5) }
             .contentShape(RoundedRectangle(cornerRadius: 19))
@@ -91,6 +99,26 @@ struct ContentView: View {
             return true
         }
         .accessibilityLabel("Create PDF. Drop DOCX files or click to browse.")
+    }
+
+    private var printDropZone: some View {
+        Button { model.openPrint() } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "printer").font(.system(size: 24)).foregroundStyle(moss).frame(width: 40)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(printTargeted ? "Drop PDFs to print" : "Print PDF").font(.system(size: 15, weight: .semibold))
+                    Text("PDF only · templates, copies and layout").font(.system(size: 10)).foregroundStyle(muted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(muted)
+            }.padding(17).frame(maxWidth: .infinity)
+                .background(printTargeted ? moss.opacity(0.17) : Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 14))
+                .overlay { RoundedRectangle(cornerRadius: 14).stroke(moss.opacity(printTargeted ? 0.6 : 0.16), lineWidth: 1) }
+        }.buttonStyle(.plain)
+            .onDrop(of: [.fileURL], isTargeted: $printTargeted) { providers in
+                loadFileURLs(providers) { urls in model.openPrint(); printing.accept(urls) }
+                return true
+            }
     }
 
     private var options: some View {
@@ -225,15 +253,18 @@ struct ContentView: View {
             Circle().fill(moss).frame(width: 5, height: 5)
             Text("PROCESSED LOCALLY").font(.system(size: 8, weight: .medium, design: .monospaced)).tracking(1.3)
             Spacer()
-            Text("v1.0").font(.system(size: 10)).foregroundStyle(muted)
+            Text("v1.1").font(.system(size: 10)).foregroundStyle(muted)
             Menu {
                 Button("About PDFMe") { model.settings = true }
                 Link("Source code", destination: URL(string: "https://github.com/justinechang39/PDFMe")!)
                 Divider()
-                Button(model.busy ? "Cancel conversions & quit" : "Quit PDFMe") {
+                Button(model.busy || printing.busy ? "Stop work & quit" : "Quit PDFMe") {
                     model.cancel()
+                    printing.cancelPreparation()
                     Task {
                         if let current = model.task { await current.value }
+                        if let current = printing.operation { await current.value }
+                        printing.cleanup()
                         NSApp.terminate(nil)
                     }
                 }.keyboardShortcut("q")

@@ -12,8 +12,8 @@ final class StatusDropView: NSView {
         registerForDraggedTypes([.fileURL])
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel("PDFMe, create PDF")
-        toolTip = "PDFMe — drop DOCX files here"
+        setAccessibilityLabel("PDFMe, create or print PDF")
+        toolTip = "PDFMe — drop DOCX to convert or PDF to print"
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func draw(_ dirtyRect: NSRect) {
@@ -55,19 +55,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             dropView.autoresizingMask = [.width, .height]
             button.addSubview(dropView)
             dropView.clicked = { [weak self] in self?.toggle() }
-            dropView.dropped = { [weak self] urls in self?.model.accept(urls) }
+            dropView.dropped = { [weak self] urls in self?.model.route(urls) }
         }
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 420, height: 590)
+        popover.contentSize = NSSize(width: 420, height: 700)
         popover.contentViewController = NSHostingController(rootView: ContentView(model: model))
         model.show = { [weak self] in self?.showPopover() }
+        model.printing.show = { [weak self] in
+            self?.model.printingMode = true; self?.model.settings = false; self?.showPopover()
+        }
         model.progressChanged = { [weak self] busy in
             self?.statusItem.button?.image = NSImage(systemSymbolName: busy ? "doc.badge.clock" : "doc.badge.arrow.up", accessibilityDescription: busy ? "PDFMe is converting" : "PDFMe")
             self?.statusItem.button?.image?.isTemplate = true
         }
         if CommandLine.arguments.contains("--preview") {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 590), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 700), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "PDFMe"
             window.contentView = NSHostingView(rootView: ContentView(model: model))
             window.center(); window.makeKeyAndOrderFront(nil)
@@ -77,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             showPopover()
         }
     }
+    func applicationWillTerminate(_ notification: Notification) { model.printing.cleanup() }
     func toggle() { if popover.isShown { popover.performClose(nil) } else { showPopover() } }
     func showPopover() {
         guard let button = statusItem?.button else { return }
@@ -86,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         popover.contentViewController?.view.window?.makeKey()
     }
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        model.accept(filenames.map { URL(fileURLWithPath: $0) })
+        model.route(filenames.map { URL(fileURLWithPath: $0) })
         sender.reply(toOpenOrPrint: .success)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showPopover(); return true }
