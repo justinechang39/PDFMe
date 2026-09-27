@@ -50,7 +50,7 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 10) {
             if model.printingMode {
-                Button { model.printingMode = false } label: { Image(systemName: "chevron.left") }.buttonStyle(.plain).help("Back").accessibilityLabel("Back to PDFMe")
+                Button { model.printingMode = false } label: { Image(systemName: "chevron.left") }.buttonStyle(ToolbarIconButtonStyle()).help("Back").accessibilityLabel("Back to PDFMe")
             }
             Image(systemName: "doc.badge.arrow.up")
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(moss)
@@ -59,8 +59,7 @@ struct ContentView: View {
             Spacer()
             Button { withAnimation { if model.printingMode { printing.showTemplateEditor.toggle() } else { model.settings.toggle() } } } label: {
                 Image(systemName: model.settings ? "xmark" : "slider.horizontal.3")
-                    .font(.system(size: 14, weight: .medium)).frame(width: 30, height: 30)
-            }.buttonStyle(.plain).help(model.settings ? "Back to converter" : "Settings")
+            }.buttonStyle(ToolbarIconButtonStyle()).help(model.settings ? "Back to converter" : "Settings")
                 .accessibilityLabel(model.settings ? "Back to converter" : "Settings")
         }.padding(.horizontal, 22).padding(.vertical, 18)
         .background(Color.white.opacity(0.4))
@@ -306,5 +305,23 @@ struct ContentView: View {
             guard urls.count == providers.count else { model.inform("One of those items couldn’t be read. Drop files directly from Finder.", error: true); return }
             model.accept(urls)
         }
+    }
+}
+
+struct ToolbarIconButtonStyle: ButtonStyle {
+    @State private var hovered = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 16, weight: .medium))
+            .frame(width: 44, height: 44)
+            .background(moss.opacity(configuration.isPressed ? 0.20 : hovered ? 0.13 : 0.07), in: RoundedRectangle(cornerRadius: 12))
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.45)
+            .onHover { hovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.10), value: configuration.isPressed)
     }
 }

@@ -113,7 +113,7 @@ struct PrintReviewView: View {
                 Text("TEMPLATE").font(.system(size: 10, weight: .semibold, design: .monospaced)).tracking(1)
                 Spacer()
                 if model.changed { Text("Unsaved changes").font(.system(size: 10)).foregroundStyle(.secondary) }
-                Button { model.showTemplateEditor.toggle() } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(.plain).help("Manage templates").accessibilityLabel("Manage templates")
+                Button { model.showTemplateEditor.toggle() } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(ToolbarIconButtonStyle()).help("Manage templates").accessibilityLabel("Manage templates")
             }
             if !model.templates.isEmpty {
                 FullWidthPicker(title: "Saved template",
