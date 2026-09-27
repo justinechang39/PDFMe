@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Add a Start at login toggle backed by macOS Login Items, with approval and error states.
+- Launch quietly in the menu bar when opened by macOS at login.
+- Make print selectors fill the available row width.
+
 ## 1.1.1
 
 - Clear PDFs and their copy counts after successful print submission to prevent accidental repeat jobs. Keep the submitted job’s queue and cancellation controls available.

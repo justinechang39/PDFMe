@@ -221,6 +221,21 @@ struct ContentView: View {
     private var settingsView: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text("Settings").font(.system(size: 30, design: .serif))
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Start at login", isOn: Binding(get: { model.startsAtLogin }, set: model.setStartAtLogin))
+                    .toggleStyle(.switch).controlSize(.small).font(.system(size: 12))
+                Text("Open PDFMe when you sign in to your Mac.")
+                    .font(.system(size: 11)).foregroundStyle(muted)
+                if model.loginItemStatus == .requiresApproval {
+                    Text("Allow PDFMe in macOS Login Items to finish enabling it.")
+                        .font(.system(size: 11)).foregroundStyle(muted)
+                    Button("Open Login Items", action: model.openLoginSettings).controlSize(.small)
+                }
+                if let error = model.loginItemError {
+                    Text(error).font(.system(size: 11)).foregroundStyle(.red)
+                }
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
             options
             VStack(alignment: .leading, spacing: 12) {
                 Text("Image quality").font(.system(size: 14, weight: .semibold))
@@ -253,7 +268,7 @@ struct ContentView: View {
             Circle().fill(moss).frame(width: 5, height: 5)
             Text("PROCESSED LOCALLY").font(.system(size: 8, weight: .medium, design: .monospaced)).tracking(1.3)
             Spacer()
-            Text("v1.1.1").font(.system(size: 10)).foregroundStyle(muted)
+            Text("v" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")).font(.system(size: 10)).foregroundStyle(muted)
             Menu {
                 Button("About PDFMe") { model.settings = true }
                 Link("Source code", destination: URL(string: "https://github.com/justinechang39/PDFMe")!)

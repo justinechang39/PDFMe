@@ -28,7 +28,7 @@ Requires **macOS 13 or later**. DOCX conversion additionally requires [LibreOffi
 3. Unzip and move **PDFMe.app** into Applications.
 4. Open PDFMe. Its document icon appears in the menu bar. Drop a `.docx` file on it.
 
-The initial community build is **ad-hoc signed, not Apple-notarized**. macOS may block a downloaded copy. After trying to open it, use **System Settings → Privacy & Security → Open Anyway** if you trust the release, or build from source. Do not disable Gatekeeper globally. The app does not automatically launch at login; add it under macOS Login Items if desired.
+The initial community build is **ad-hoc signed, not Apple-notarized**. macOS may block a downloaded copy. After trying to open it, use **System Settings → Privacy & Security → Open Anyway** if you trust the release, or build from source. Do not disable Gatekeeper globally. To open PDFMe automatically when you sign in, enable **Settings → Start at login**. The toggle uses macOS Login Items and reflects changes made in System Settings. If macOS requires approval, PDFMe shows an **Open Login Items** button. Login launches stay in the menu bar without opening the panel.
 
 Allow notifications when macOS asks if you want completion banners. Results also appear inside PDFMe regardless of notification permission. Documents from iCloud or another cloud drive must be downloaded before conversion.
 

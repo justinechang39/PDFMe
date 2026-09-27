@@ -3,6 +3,7 @@ import SwiftUI
 import UserNotifications
 import UniformTypeIdentifiers
 import PDFMeCore
+import ServiceManagement
 
 struct ConversionJob: Identifiable {
     let id = UUID()
@@ -15,6 +16,19 @@ struct ConversionJob: Identifiable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    @Published private(set) var loginItemStatus = LoginItem.status
+    @Published private(set) var loginItemError: String?
+    var startsAtLogin: Bool { loginItemStatus == .enabled || loginItemStatus == .requiresApproval }
+
+    func refreshLoginItem() { loginItemStatus = LoginItem.status }
+    func setStartAtLogin(_ enabled: Bool) {
+        loginItemError = nil
+        do { try LoginItem.setEnabled(enabled) }
+        catch { loginItemError = "Couldn’t update Start at login: \(error.localizedDescription)" }
+        refreshLoginItem()
+    }
+    func openLoginSettings() { SMAppService.openSystemSettingsLoginItems() }
+
     @Published var quality: PDFQuality = PDFQuality(rawValue: UserDefaults.standard.string(forKey: "quality") ?? "") ?? .balanced {
         didSet { UserDefaults.standard.set(quality.rawValue, forKey: "quality") }
     }

@@ -76,15 +76,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             window.center(); window.makeKeyAndOrderFront(nil)
             previewWindow = window
             NSApp.activate(ignoringOtherApps: true)
-        } else {
+        } else if !LoginItem.launchedAtLogin {
             showPopover()
         }
     }
+    func applicationDidBecomeActive(_ notification: Notification) { model.refreshLoginItem() }
     func applicationWillTerminate(_ notification: Notification) { model.printing.cleanup() }
     func toggle() { if popover.isShown { popover.performClose(nil) } else { showPopover() } }
     func showPopover() {
         guard let button = statusItem?.button else { return }
         model.refreshEngine()
+        model.refreshLoginItem()
         if !popover.isShown { popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY) }
         NSApp.activate(ignoringOtherApps: true)
         popover.contentViewController?.view.window?.makeKey()
@@ -105,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 struct PDFMeApp {
     @MainActor
     static func main() {
+        if LoginItem.handleCommandLine() { return }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
