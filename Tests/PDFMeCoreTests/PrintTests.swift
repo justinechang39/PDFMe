@@ -2,6 +2,17 @@ import XCTest
 @testable import PDFMeCore
 
 final class PrintTests: XCTestCase {
+    func testPreviewMapsCopiesAndBlankBacksToTheirDocument() throws {
+        let plan = try PrintPlan(pageCounts: [1, 3], template: PrintTemplate(duplex: .shortEdge, pagesPerSide: 2), copies: [2, 1])
+        XCTAssertEqual(plan.sideIndices(forDocument: 0), [0, 1, 2, 3])
+        XCTAssertEqual(plan.sideIndices(forDocument: 1), [4, 5])
+        XCTAssertEqual(plan.sideIndices(forDocument: 2), [])
+    }
+    func testPreviewIncludesSharedSidesForBothDocuments() throws {
+        let plan = try PrintPlan(pageCounts: [1, 2], template: PrintTemplate(duplex: .shortEdge, pagesPerSide: 2, startEachFileOnNewSheet: false))
+        XCTAssertEqual(plan.sideIndices(forDocument: 0), [0])
+        XCTAssertEqual(plan.sideIndices(forDocument: 1), [0, 1])
+    }
     func testIndependentCopyCountsKeepEachDocumentCollated() throws {
         let plan = try PrintPlan(pageCounts: [3, 2], template: PrintTemplate(duplex: .shortEdge, pagesPerSide: 2), copies: [2, 1])
         XCTAssertEqual(plan.sheetCount, 3)

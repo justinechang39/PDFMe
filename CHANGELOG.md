@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- Widen Print PDF mode with a live sheet preview beside the file list and settings.
+- Select a PDF to inspect its actual batch sides, including copies, shared sheets, and blank duplex backs.
+- Update previews when print settings change; render only the displayed side in the background.
+- Keep the full job available through Open in Preview.
+
 ## 1.2.0
 
 - Add a Start at login toggle backed by macOS Login Items, with approval and error states.

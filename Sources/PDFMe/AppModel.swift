@@ -44,7 +44,9 @@ final class AppModel: ObservableObject {
     @Published var messageIsError = false
     @Published var engineReady = Converter.engineURL != nil
     @Published var settings = false
-    @Published var printingMode = false
+    @Published var printingMode = false { didSet { if oldValue != printingMode { panelSizeChanged?() } } }
+    var panelSize: NSSize { NSSize(width: printingMode ? 840 : 420, height: 700) }
+    var panelSizeChanged: (() -> Void)?
     let printing = PrintModel()
     var task: Task<Void, Never>?
     var worker: Task<URL, Error>?

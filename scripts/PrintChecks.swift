@@ -33,6 +33,16 @@ struct PrintChecks {
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
         context.textPosition = CGPoint(x: x, y: y); CTLineDraw(line, context)
     }
+    static func pixels(_ page: PDFPage) -> Data {
+        let width = 500, height = 500
+        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let cgPage = page.pageRef!
+        context.concatenate(cgPage.getDrawingTransform(.mediaBox, rect: CGRect(x: 0, y: 0, width: width, height: height), rotate: 0, preserveAspectRatio: true))
+        context.drawPDFPage(cgPage)
+        return Data(bytes: context.data!, count: width * height * 4)
+    }
     static func main() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -64,6 +74,15 @@ struct PrintChecks {
         let expected = ["A1", "A3", "A1", "A3", "B1"]
         try check(expected.enumerated().allSatisfy { copiesPDF.page(at: $0.offset)!.string?.contains($0.element) == true }, "per-file copies are collated A, A, B in the actual prepared PDF")
         try check(copiesPlan.sides[5].isEmpty, "duplex per-file copies preserve the final blank back")
+        for index in copiesPlan.sides.indices {
+            let data = try PrintComposer.previewSide(urls: [a, b], side: copiesPlan.sides[index], template: template)
+            let preview = PDFDocument(data: data)!
+            try check(preview.pageCount == 1 && pixels(preview.page(at: 0)!) == pixels(copiesPDF.page(at: index)!), "inline preview matches printed side \(index + 1), including copies and blank backs")
+        }
+        try check(copiesPlan.sideIndices(forDocument: 0) == [0, 1, 2, 3] && copiesPlan.sideIndices(forDocument: 1) == [4, 5], "file selection maps to its actual batch sides")
+        let sharedData = try PrintComposer.previewSide(urls: [a, b], side: continuous.sides[1], template: template)
+        let sharedText = PDFDocument(data: sharedData)!.string ?? ""
+        try check(sharedText.contains("A3") && sharedText.contains("B1"), "preview preserves pages from both PDFs on a shared side")
         let packedCopies = try PrintPlan(pageCounts: [1, 1], template: PrintTemplate(duplex: .shortEdge, pagesPerSide: 2, startEachFileOnNewSheet: false), copies: [2, 1])
         try check(packedCopies.sheetCount == 2 && packedCopies.sides[1].isEmpty && packedCopies.sides[2].map(\.document) == [0, 1], "continuous files still keep repeat copies on separate sheets")
         for counts in [[0], [1000], [], [1, 2]] {
@@ -74,6 +93,8 @@ struct PrintChecks {
         _ = try PrintComposer.prepare(urls: [a, b], template: template, output: root.appendingPathComponent("2-up image.pdf"))
         let raster = PDFDocument(url: root.appendingPathComponent("2-up image.pdf"))!
         try check(raster.pageCount == 4 && (raster.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "print as image rasterizes the pages")
+        let imagePreview = try PrintComposer.previewSide(urls: [a, b], side: plan.sides[0], template: template)
+        try check(pixels(PDFDocument(data: imagePreview)!.page(at: 0)!) == pixels(raster.page(at: 0)!), "image preview matches rasterized print output")
         template.color = .grayscale
         _ = try PrintComposer.prepare(urls: [a], template: template, output: root.appendingPathComponent("grayscale image.pdf"))
         let rotated = root.appendingPathComponent("Rotated crop.pdf")

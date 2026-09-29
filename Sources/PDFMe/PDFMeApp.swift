@@ -61,6 +61,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         popover.animates = true
         popover.contentSize = NSSize(width: 420, height: 700)
         popover.contentViewController = NSHostingController(rootView: ContentView(model: model))
+        model.panelSizeChanged = { [weak self] in
+            guard let self else { return }
+            self.popover.contentSize = self.model.panelSize
+            self.previewWindow?.setContentSize(self.model.panelSize)
+        }
         model.show = { [weak self] in self?.showPopover() }
         model.printing.show = { [weak self] in
             self?.model.printingMode = true; self?.model.settings = false; self?.showPopover()

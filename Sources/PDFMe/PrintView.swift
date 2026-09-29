@@ -53,12 +53,16 @@ struct PrintReviewView: View {
             } else {
                 ForEach(Array(model.inputs.enumerated()), id: \.element.id) { index, input in
                     HStack(spacing: 8) {
-                        Text("\(index + 1)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).frame(width: 16)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(input.url.lastPathComponent).font(.system(size: 12, weight: .medium)).lineLimit(1).help(input.url.path)
-                            Text("\(input.pages) \(input.pages == 1 ? "page" : "pages")").font(.system(size: 10)).foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 2)
+                        Button { model.selectPreview(input.id) } label: {
+                            HStack(spacing: 8) {
+                                Text("\(index + 1)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).frame(width: 16)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(input.url.lastPathComponent).font(.system(size: 12, weight: .medium)).lineLimit(1).help(input.url.path)
+                                    Text("\(input.pages) \(input.pages == 1 ? "page" : "pages")").font(.system(size: 10)).foregroundStyle(.secondary)
+                                }
+                            }.frame(maxWidth: .infinity, minHeight: 36, alignment: .leading).contentShape(Rectangle())
+                        }.accessibilityLabel("Preview \(input.url.lastPathComponent)")
+                            .accessibilityAddTraits(model.selectedPreviewID == input.id ? .isSelected : [])
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Copies").font(.system(size: 10)).foregroundStyle(.secondary)
                             HStack(spacing: 4) {
@@ -86,7 +90,7 @@ struct PrintReviewView: View {
                                 return provider
                             }
                     }.font(.system(size: 10)).buttonStyle(.plain).padding(12).disabled(model.busy)
-                        .background(reorderTarget == input.id ? accent.opacity(0.1) : Color.clear)
+                        .background(reorderTarget == input.id || model.selectedPreviewID == input.id ? accent.opacity(0.1) : Color.clear)
                         .onDrop(of: [PrintRowDropDelegate.type], delegate: PrintRowDropDelegate(model: model, target: input.id, highlighted: $reorderTarget))
                     if index < model.inputs.count - 1 { Divider().padding(.horizontal, 12) }
                 }
@@ -209,7 +213,7 @@ struct PrintActionBar: View {
                         Text("\(plan.sheetCount) \(plan.sheetCount == 1 ? "sheet" : "sheets") total").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Preview") { model.prepare(previewOnly: true) }.disabled(!model.canPrint)
+                    Button("Open in Preview") { model.prepare(previewOnly: true) }.disabled(!model.canPrint)
                     Button("Print") { model.prepare(previewOnly: false) }.buttonStyle(.borderedProminent).disabled(!model.canPrint)
                 }
             }

@@ -77,6 +77,14 @@ public struct PrintPlan: Sendable {
     public let sides: [[PrintPageReference]]
     public let duplex: Bool
     public var sheetCount: Int { duplex ? (sides.count + 1) / 2 : sides.count }
+    /// Include shared sides and a document's intentional blank duplex backs.
+    public func sideIndices(forDocument document: Int) -> [Int] {
+        sides.indices.filter { index in
+            sides[index].contains { $0.document == document } ||
+                (duplex && index % 2 == 1 && sides[index].isEmpty &&
+                 sides[index - 1].contains { $0.document == document })
+        }
+    }
     public init(pageCounts: [Int], template: PrintTemplate, copies: [Int]? = nil) throws {
         try template.validate()
         guard !pageCounts.isEmpty, pageCounts.allSatisfy({ $0 > 0 }) else { throw PrintError.message("Add at least one readable PDF.") }
@@ -142,41 +150,20 @@ public enum PrintComposer {
                                progress: @Sendable (Int, Int) -> Void = { _, _ in }) throws -> PrintPlan {
         let inputs = try inspect(urls)
         let plan = try PrintPlan(pageCounts: inputs.map(\.pages), template: template, copies: copies)
-        let documents = try inputs.map { input -> PDFDocument in
+        let documents = try Dictionary(uniqueKeysWithValues: inputs.enumerated().map { index, input -> (Int, PDFDocument) in
             guard let document = PDFDocument(url: input.url) else { throw PrintError.message("A source PDF changed. Add the files again.") }
-            return document
-        }
+            return (index, document)
+        })
         var media = CGRect(origin: .zero, size: template.pageSize)
         guard let context = CGContext(output as CFURL, mediaBox: &media, [kCGPDFContextTitle: "PDFMe print job"] as CFDictionary) else {
             throw PrintError.message("Could not prepare the print file.")
         }
         var complete = false
         defer { context.closePDF(); if !complete { try? FileManager.default.removeItem(at: output) } }
-        let cells = cellRects(template: template)
         for (sideIndex, side) in plan.sides.enumerated() {
             try Task.checkCancellation()
             try autoreleasepool {
-                context.beginPDFPage(nil)
-                context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(media)
-                if template.printAsImage && !side.isEmpty {
-                    let scale = CGFloat(template.dpi) / 72
-                    let width = Int(ceil(media.width * scale)), height = Int(ceil(media.height * scale))
-                    guard width * height <= 80_000_000 else { throw PrintError.message("This paper size at \(template.dpi) dpi needs too much memory. Choose a lower image resolution.") }
-                    let gray = template.color == .grayscale
-                    let space = gray ? CGColorSpaceCreateDeviceGray() : CGColorSpaceCreateDeviceRGB()
-                    let info = gray ? CGImageAlphaInfo.none.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
-                    guard let bitmap = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info) else {
-                        throw PrintError.message("Not enough memory to render this sheet. Choose a lower image resolution.")
-                    }
-                    bitmap.scaleBy(x: scale, y: scale)
-                    bitmap.setFillColor(CGColor(gray: 1, alpha: 1)); bitmap.fill(media)
-                    try draw(side, documents: documents, cells: cells, in: bitmap)
-                    guard let image = bitmap.makeImage() else { throw PrintError.message("Could not render the print image.") }
-                    context.draw(image, in: media)
-                } else {
-                    try draw(side, documents: documents, cells: cells, in: context)
-                }
-                context.endPDFPage()
+                try renderSide(side, documents: documents, template: template, in: context)
             }
             progress(sideIndex + 1, plan.sides.count)
         }
@@ -184,10 +171,68 @@ public enum PrintComposer {
         return plan
     }
 
-    private static func draw(_ side: [PrintPageReference], documents: [PDFDocument], cells: [CGRect], in context: CGContext) throws {
+    /// Render only the requested side, using the same composition path as printing.
+    public static func previewSide(urls: [URL], side: [PrintPageReference], template: PrintTemplate) throws -> Data {
+        try template.validate()
+        try Task.checkCancellation()
+        guard side.count <= template.pagesPerSide else { throw PrintError.message("Invalid preview layout.") }
+        var documents: [Int: PDFDocument] = [:]
+        for index in Set(side.map(\.document)) {
+            guard urls.indices.contains(index) else { throw PrintError.message("The PDF list changed. Select a file again.") }
+            _ = try inspect([urls[index]])
+            guard let document = PDFDocument(url: urls[index]) else { throw PrintError.message("Couldn’t open the PDF for preview.") }
+            documents[index] = document
+        }
+        let data = NSMutableData()
+        var media = CGRect(origin: .zero, size: template.pageSize)
+        guard let consumer = CGDataConsumer(data: data as CFMutableData),
+              let context = CGContext(consumer: consumer, mediaBox: &media, nil) else {
+            throw PrintError.message("Couldn’t create the sheet preview.")
+        }
+        do {
+            // The driver applies grayscale to vector jobs; simulate that in the on-screen preview.
+            var displayTemplate = template
+            if template.color == .grayscale && !template.printAsImage {
+                displayTemplate.printAsImage = true
+                displayTemplate.dpi = 150
+            }
+            try renderSide(side, documents: documents, template: displayTemplate, in: context)
+            context.closePDF()
+        } catch { context.closePDF(); throw error }
+        try Task.checkCancellation()
+        return data as Data
+    }
+
+    private static func renderSide(_ side: [PrintPageReference], documents: [Int: PDFDocument], template: PrintTemplate, in context: CGContext) throws {
+        let media = CGRect(origin: .zero, size: template.pageSize)
+        let cells = cellRects(template: template)
+        context.beginPDFPage(nil)
+        context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(media)
+        if template.printAsImage && !side.isEmpty {
+            let scale = CGFloat(template.dpi) / 72
+            let width = Int(ceil(media.width * scale)), height = Int(ceil(media.height * scale))
+            guard width * height <= 80_000_000 else { throw PrintError.message("This paper size at \(template.dpi) dpi needs too much memory. Choose a lower image resolution.") }
+            let gray = template.color == .grayscale
+            let space = gray ? CGColorSpaceCreateDeviceGray() : CGColorSpaceCreateDeviceRGB()
+            let info = gray ? CGImageAlphaInfo.none.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
+            guard let bitmap = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info) else {
+                throw PrintError.message("Not enough memory to render this sheet. Choose a lower image resolution.")
+            }
+            bitmap.scaleBy(x: scale, y: scale)
+            bitmap.setFillColor(CGColor(gray: 1, alpha: 1)); bitmap.fill(media)
+            try draw(side, documents: documents, cells: cells, in: bitmap)
+            guard let image = bitmap.makeImage() else { throw PrintError.message("Could not render the print image.") }
+            context.draw(image, in: media)
+        } else {
+            try draw(side, documents: documents, cells: cells, in: context)
+        }
+        context.endPDFPage()
+    }
+
+    private static func draw(_ side: [PrintPageReference], documents: [Int: PDFDocument], cells: [CGRect], in context: CGContext) throws {
         for (slot, ref) in side.enumerated() {
             try Task.checkCancellation()
-            guard let page = documents[ref.document].page(at: ref.page), let cgPage = page.pageRef else { throw PrintError.message("A PDF page could not be rendered.") }
+            guard let page = documents[ref.document]?.page(at: ref.page), let cgPage = page.pageRef else { throw PrintError.message("A PDF page could not be rendered.") }
             let bounds = cgPage.getBoxRect(.cropBox)
             guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { throw PrintError.message("A PDF page has invalid dimensions.") }
             context.saveGState()

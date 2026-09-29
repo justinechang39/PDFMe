@@ -39,10 +39,18 @@ Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or
 1. Add the PDFs you want to print.
 2. Choose a saved template and the printer. Adjust settings for this job if needed.
 3. Set **Copies** on each PDF row. Drag the handle on the right to change the file order; each document’s copies stay together.
-4. Click **Preview** to inspect the prepared sheet layout in macOS Preview.
+4. Click a PDF in the list to see its sheet layout on the right. Use the arrows to inspect its printed sides. **Open in Preview** opens the complete batch in macOS Preview.
 5. Click **Print** to send one job to the selected printer.
 
 After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s queue and cancellation controls. Previewing or a failed submission keeps the files for review.
+
+### Live sheet preview
+
+Print PDF mode expands to show the file list and settings on the left and a live preview on the right. Selecting a file highlights it and shows the sides that contain it in the actual batch. The preview includes its requested copies, blank duplex backs, and neighboring PDFs when documents share a side. Sheet numbers refer to the full print job.
+
+Changes to paper, orientation, pages per side, image rendering, and color update the preview automatically. Rendering runs in the background and only prepares the visible side. Old renders are cancelled when selection or settings change; clearing the batch clears the preview. The preview also works before a printer is selected.
+
+The inline preview shares the print compositor. Black-and-white vector jobs are simulated in grayscale for display; actual printer color handling and printable margins can differ. Front/back labels identify the side being shown, not an animation of the physical duplex turn. **Open in Preview** still generates the complete batch at the selected image resolution. No preview operation submits a print job.
 
 ### Templates
 
@@ -61,7 +69,7 @@ Unsaved setting changes affect the current job only. Copy counts are set separat
 
 ### Layout and collation
 
-For example, with two copies of A and one copy of B, the job contains **A, A, B**, with every document’s pages in order. Copies are included in the prepared PDF, so **Preview** shows the complete job. Repeated copies of a document always start on separate physical sheets. With **Start each PDF on a new sheet**, PDFMe also keeps different documents on separate sheets, adding blank backs where necessary for duplex. Turn it off to let different PDFs share a sheet. The sheet total includes all requested copies and any blank backs.
+For example, with two copies of A and one copy of B, the job contains **A, A, B**, with every document’s pages in order. Copies are included in the prepared PDF, so **Open in Preview** shows the complete job. Repeated copies of a document always start on separate physical sheets. With **Start each PDF on a new sheet**, PDFMe also keeps different documents on separate sheets, adding blank backs where necessary for duplex. Turn it off to let different PDFs share a sheet. The sheet total includes all requested copies and any blank backs.
 
 Two-up places pages side by side on each printed side; it is not booklet imposition. Landscape and short-edge duplex normally produce the expected left/right page turning for this arrangement. Printer drivers can differ, so test one sheet before a large run.
 

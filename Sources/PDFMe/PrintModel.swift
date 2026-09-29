@@ -6,12 +6,15 @@ import PDFMeCore
 
 @MainActor
 final class PrintModel: ObservableObject {
-    @Published var inputs: [PrintInput] = []
+    @Published var inputs: [PrintInput] = [] { didSet { refreshPreview() } }
     @Published var printers: [Printer] = []
     @Published var capabilities: PrinterCapabilities?
     @Published var templates: [PrintTemplate]
     @Published var template: PrintTemplate {
-        didSet { if oldValue.printerID != template.printerID { loadCapabilities() } }
+        didSet {
+            if oldValue.printerID != template.printerID { loadCapabilities() }
+            if oldValue != template { refreshPreview() }
+        }
     }
     @Published var selectedTemplateID: UUID?
     @Published var defaultTemplateID: UUID?
@@ -31,6 +34,77 @@ final class PrintModel: ObservableObject {
     private var inspection: Task<[PrintInput], Error>?
     private var capabilityTask: Task<Void, Never>?
     private var workspaces: [URL] = []
+    @Published private(set) var selectedPreviewID: UUID?
+    @Published private(set) var previewData: Data?
+    @Published private(set) var previewLoading = false
+    @Published private(set) var previewError: String?
+    @Published private(set) var previewOffset = 0
+    @Published private(set) var previewIndices: [Int] = []
+    private var previewPlan: PrintPlan?
+    private var previewTask: Task<Void, Never>?
+    private var previewGeneration = UUID()
+    private var previewVisible = false
+
+    var previewInput: PrintInput? { inputs.first { $0.id == selectedPreviewID } }
+    var previewSideIndex: Int? { previewIndices.indices.contains(previewOffset) ? previewIndices[previewOffset] : nil }
+    var previewSide: [PrintPageReference] {
+        guard let index = previewSideIndex, let previewPlan else { return [] }
+        return previewPlan.sides[index]
+    }
+    var previewSheetTitle: String {
+        guard let index = previewSideIndex else { return "" }
+        return template.duplex == .off ? "Sheet \(index + 1)" : "Sheet \(index / 2 + 1) · \(index % 2 == 0 ? "Front" : "Back")"
+    }
+
+    func selectPreview(_ id: UUID) {
+        guard inputs.contains(where: { $0.id == id }), selectedPreviewID != id else { return }
+        selectedPreviewID = id; previewOffset = 0
+        refreshPreview()
+    }
+    func movePreview(by offset: Int) {
+        guard previewIndices.indices.contains(previewOffset + offset) else { return }
+        previewOffset += offset
+        renderPreview()
+    }
+    func setPreviewVisible(_ visible: Bool) {
+        previewVisible = visible
+        if visible { refreshPreview() }
+        else { previewTask?.cancel(); previewGeneration = UUID(); previewLoading = false }
+    }
+    private func refreshPreview() {
+        if !inputs.contains(where: { $0.id == selectedPreviewID }) {
+            selectedPreviewID = inputs.first?.id
+            previewOffset = 0
+        }
+        previewPlan = plan
+        if let document = inputs.firstIndex(where: { $0.id == selectedPreviewID }), let previewPlan {
+            previewIndices = previewPlan.sideIndices(forDocument: document)
+        } else { previewIndices = [] }
+        previewOffset = min(previewOffset, max(0, previewIndices.count - 1))
+        renderPreview()
+    }
+    private func renderPreview() {
+        previewTask?.cancel()
+        let generation = UUID(); previewGeneration = generation
+        previewData = nil; previewError = nil; previewLoading = false
+        guard previewVisible, previewSideIndex != nil else { return }
+        let urls = inputs.map(\.url), side = previewSide, snapshot = template
+        previewLoading = true
+        previewTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 200_000_000)
+                let worker = Task.detached(priority: .userInitiated) {
+                    try PrintComposer.previewSide(urls: urls, side: side, template: snapshot)
+                }
+                let data = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
+                guard !Task.isCancelled, previewGeneration == generation else { return }
+                previewData = data; previewLoading = false
+            } catch {
+                guard !Task.isCancelled, previewGeneration == generation else { return }
+                previewError = error.localizedDescription; previewLoading = false
+            }
+        }
+    }
 
     init() {
         let saved = UserDefaults.standard.data(forKey: "printTemplates.v1")
@@ -236,6 +310,7 @@ final class PrintModel: ObservableObject {
         }
     }
     func cleanup() {
+        previewTask?.cancel()
         for root in workspaces { try? FileManager.default.removeItem(at: root) }
         workspaces.removeAll()
     }

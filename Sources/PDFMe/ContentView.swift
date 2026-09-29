@@ -20,23 +20,32 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if model.printingMode { PrintReviewView(model: printing) }
-                    else if model.settings { settingsView.transition(.opacity.combined(with: .move(edge: .trailing))) }
-                    else {
-                        dropZone
-                        printDropZone
-                        if !model.engineReady { engineNotice }
-                        if let message = model.message { banner(message) }
-                        if !model.jobs.isEmpty { results }
-                        options
-                    }
-                }.padding(24)
-            }.scrollIndicators(.hidden)
+            if model.printingMode {
+                HStack(spacing: 0) {
+                    ScrollView {
+                        PrintReviewView(model: printing).padding(24)
+                    }.scrollIndicators(.hidden).frame(width: 420)
+                    Divider()
+                    PrintPreviewView(model: printing)
+                }
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if model.settings { settingsView.transition(.opacity.combined(with: .move(edge: .trailing))) }
+                        else {
+                            dropZone
+                            printDropZone
+                            if !model.engineReady { engineNotice }
+                            if let message = model.message { banner(message) }
+                            if !model.jobs.isEmpty { results }
+                            options
+                        }
+                    }.padding(24)
+                }.scrollIndicators(.hidden)
+            }
             if model.printingMode { PrintActionBar(model: printing) } else { footer }
         }
-        .frame(width: 420, height: 700)
+        .frame(width: model.panelSize.width, height: model.panelSize.height)
         .background(paper)
         .foregroundStyle(ink)
         .tint(moss)
