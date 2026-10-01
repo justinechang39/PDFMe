@@ -39,6 +39,53 @@ public struct PrintSubmission: Sendable {
     public let printerName: String
 }
 
+/// State of this Mac's queue, not a claim that the physical printer is ready.
+public struct PrinterQueueStatus: Equatable, Sendable {
+    public let isPaused: Bool
+    public let reason: String?
+
+    public init(output: String, printerID: String) throws {
+        let lines = output.components(separatedBy: .newlines)
+        guard let first = lines.first, first.hasPrefix("printer \(printerID) ") else {
+            throw PrintError.message("Couldn’t read the printer queue. Open Printers & queues to check it.")
+        }
+        let state = first.dropFirst("printer \(printerID) ".count)
+        if state.hasPrefix("disabled ") { isPaused = true }
+        else if state.hasPrefix("is idle."), state.contains("enabled since") { isPaused = false }
+        else if state.hasPrefix("now printing "), state.contains("enabled since") { isPaused = false }
+        else { throw PrintError.message("Couldn’t read the printer queue. Open Printers & queues to check it.") }
+        // lpstat puts the pause explanation immediately below the header, before labeled fields.
+        let detail = lines.dropFirst().first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        reason = isPaused && !detail.isEmpty && !detail.contains(":") ? detail : nil
+    }
+}
+
+public enum PrinterQueueService {
+    public typealias Runner = @Sendable (String, [String]) async throws -> PrintCommand.Result
+    public static func status(for id: String, run: Runner = { try await PrintCommand.run($0, $1) }) async throws -> PrinterQueueStatus {
+        let result = try await run("/usr/bin/lpstat", ["-l", "-p", id])
+        guard result.status == 0 else { throw PrintError.message("Couldn’t read the printer queue. Open Printers & queues to check it.") }
+        return try PrinterQueueStatus(output: result.output, printerID: id)
+    }
+
+    /// Only call after explicit confirmation that existing queued jobs may print.
+    /// Does not resubmit documents, release held jobs, or change the error policy.
+    public static func resume(_ id: String, run: Runner = { try await PrintCommand.run($0, $1) }) async throws -> PrinterQueueStatus {
+        let current = try await status(for: id, run: run)
+        guard current.isPaused else { return current }
+        try Task.checkCancellation()
+        let result = try await run("/usr/sbin/cupsenable", [id])
+        guard result.status == 0 else {
+            throw PrintError.message("macOS couldn’t resume this printer. Open Printers & queues to resume it or check permissions.")
+        }
+        let updated = try await status(for: id, run: run)
+        guard !updated.isPaused else {
+            throw PrintError.message("The queue is still paused. Check the printer and Printers & queues before trying again.")
+        }
+        return updated
+    }
+}
+
 public enum PrinterService {
     public static func list() async throws -> [Printer] {
         let status = try await PrintCommand.run("/usr/bin/lpstat", ["-l", "-p"])
@@ -87,7 +134,7 @@ public enum PrinterService {
         return args
     }
 
-    /// The only method that sends paper to a printer. Call solely from an explicit Print action.
+    /// The only method that submits a new document. Call solely from an explicit Print action.
     public static func submit(file: URL, template: PrintTemplate, copies: Int) async throws -> PrintSubmission {
         let printers = try await list()
         guard let printer = printers.first(where: { $0.id == template.printerID }) else { throw PrintError.message("The template’s printer is no longer installed. Select another printer.") }
@@ -98,6 +145,8 @@ public enum PrinterService {
         }
         var arguments = try arguments(file: file, template: template, copies: copies, capabilities: caps)
         arguments.insert(contentsOf: ["-o", "page-ranges=1-\(prepared.pageCount)"], at: 0)
+        let queue = try await PrinterQueueService.status(for: printer.id)
+        guard !queue.isPaused else { throw PrintError.message("The printer queue is paused. Resume it before printing. Nothing was sent.") }
         let result = try await PrintCommand.run("/usr/bin/lp", arguments)
         guard result.status == 0 else { throw PrintError.message("The printer didn’t accept this job. \(result.output.trimmingCharacters(in: .whitespacesAndNewlines))") }
         guard let job = parseJobID(result.output, printerID: printer.id) else {
@@ -120,7 +169,11 @@ public enum PrinterService {
 }
 
 public enum PrintCommand {
-    public struct Result: Sendable { public let status: Int32; public let output: String }
+    public struct Result: Sendable {
+        public let status: Int32
+        public let output: String
+        public init(status: Int32, output: String) { self.status = status; self.output = output }
+    }
     /// Reads and spooling run asynchronously. No shell interpolation or printer preference mutations.
     public static func run(_ path: String, _ arguments: [String], timeout: TimeInterval = 20) async throws -> Result {
         try Task.checkCancellation()

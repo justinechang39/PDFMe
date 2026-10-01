@@ -12,7 +12,7 @@ final class PrintModel: ObservableObject {
     @Published var templates: [PrintTemplate]
     @Published var template: PrintTemplate {
         didSet {
-            if oldValue.printerID != template.printerID { loadCapabilities() }
+            if oldValue.printerID != template.printerID { queueStatus = nil; queueError = nil; loadCapabilities() }
             if oldValue != template { refreshPreview() }
         }
     }
@@ -28,6 +28,9 @@ final class PrintModel: ObservableObject {
     @Published var isError = false
     @Published var submission: PrintSubmission?
     @Published var showTemplateEditor = false
+    @Published private(set) var queueStatus: PrinterQueueStatus?
+    @Published private(set) var queueError: String?
+    @Published private(set) var resumingPrinter = false
     var show: (() -> Void)?
     var operation: Task<Void, Never>?
     private var preparation: Task<PrintPlan, Error>?
@@ -126,7 +129,44 @@ final class PrintModel: ObservableObject {
         return nil
     }
     var changed: Bool { templates.first(where: { $0.id == selectedTemplateID }) != template }
-    var canPrint: Bool { !busy && !loadingPrinters && !loadingCapabilities && !inputs.isEmpty && validationMessage == nil }
+    var canPreview: Bool { !busy && !resumingPrinter && !loadingPrinters && !loadingCapabilities && !inputs.isEmpty && validationMessage == nil }
+    var canPrint: Bool { canPreview && queueStatus?.isPaused != true && queueError == nil }
+
+    // SwiftUI cancels this when the panel closes or the selected printer changes.
+    func monitorQueue(for id: String) async {
+        guard !id.isEmpty else { return }
+        while !Task.isCancelled && template.printerID == id {
+            await refreshQueue(for: id)
+            do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+        }
+    }
+    private func refreshQueue(for id: String) async {
+        do {
+            let status = try await PrinterQueueService.status(for: id)
+            guard !Task.isCancelled, template.printerID == id else { return }
+            queueStatus = status; queueError = nil
+        } catch {
+            guard !Task.isCancelled, template.printerID == id else { return }
+            queueStatus = nil; queueError = error.localizedDescription
+        }
+    }
+    func resumePrinter(_ id: String) {
+        guard !busy, !resumingPrinter, template.printerID == id else { return }
+        resumingPrinter = true
+        Task {
+            defer { resumingPrinter = false }
+            do {
+                let updated = try await PrinterQueueService.resume(id)
+                guard template.printerID == id else { return }
+                queueStatus = updated; queueError = nil
+                inform("Printer queue resumed")
+            } catch {
+                guard template.printerID == id else { return }
+                inform(error.localizedDescription, error: true)
+                await refreshQueue(for: id)
+            }
+        }
+    }
 
     func refreshPrinters() {
         guard !loadingPrinters else { return }
@@ -248,7 +288,10 @@ final class PrintModel: ObservableObject {
     func inform(_ text: String, error: Bool = false) { isError = error; message = text }
 
     func prepare(previewOnly: Bool) {
-        guard canPrint else { inform(validationMessage ?? "Add PDF files first.", error: true); return }
+        guard previewOnly ? canPreview : canPrint else {
+            inform(queueStatus?.isPaused == true && !previewOnly ? "Resume the printer queue before printing." : (validationMessage ?? queueError ?? "Add PDF files first."), error: true)
+            return
+        }
         let urls = inputs.map(\.url), snapshot = template, counts = inputs.map(\.copies)
         busy = true; submitting = false; progress = 0; stage = "Preparing print layout"; message = nil
         operation = Task {
@@ -288,9 +331,13 @@ final class PrintModel: ObservableObject {
                     cleanup()
                     inform("Sent to \(accepted.printerName)")
                     notify(accepted.printerName)
+                    await refreshQueue(for: snapshot.printerID)
                 }
             } catch is CancellationError { inform("Print preparation cancelled. Nothing was sent.") }
-            catch { inform(error.localizedDescription, error: true) }
+            catch {
+                inform(error.localizedDescription, error: true)
+                if !previewOnly { await refreshQueue(for: snapshot.printerID) }
+            }
         }
     }
     func cancelPreparation() {

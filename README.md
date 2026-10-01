@@ -44,6 +44,8 @@ Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or
 
 After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s queue and cancellation controls. Previewing or a failed submission keeps the files for review.
 
+If macOS pauses the selected printer queue, PDFMe shows the queue’s error and a **Resume printer** button. It checks every five seconds while Print PDF is open and again before submitting a job. Preview remains available while paused. Resuming requires confirmation because existing queued jobs, including partially printed ones, may start printing. Use **Printers & queues** to remove unwanted jobs first. PDFMe verifies the queue resumed; it never automatically retries documents, releases held jobs, or changes the printer’s error policy. A resumed Mac queue does not guarantee that the physical printer is ready; recurring errors may require attention on the printer itself.
+
 ### Live sheet preview
 
 Print PDF mode expands to show the file list and settings on the left and a live preview on the right. Selecting a file highlights it and shows the sides that contain it in the actual batch. The preview includes its requested copies, blank duplex backs, and neighboring PDFs when documents share a side. Sheet numbers refer to the full print job.

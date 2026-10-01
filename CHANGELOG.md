@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+
+- Detect paused printer queues while Print PDF is open and check again before submitting.
+- Add Resume printer with confirmation that existing queued jobs may print, and verify the queue resumed.
+- Keep previews available while a queue is paused. Never automatically resume, resend files, or release held jobs.
+
 ## 1.3.0
 
 - Widen Print PDF mode with a live sheet preview beside the file list and settings.

@@ -6,6 +6,8 @@ struct PrintReviewView: View {
     @ObservedObject var model: PrintModel
     @State private var dropTargeted = false
     @State private var reorderTarget: UUID?
+    @State private var resumePrinterID: String?
+    @State private var showResumeConfirmation = false
     private let accent = Color(red: 0.24, green: 0.37, blue: 0.27)
 
     var body: some View {
@@ -24,6 +26,7 @@ struct PrintReviewView: View {
                     .padding(11).frame(maxWidth: .infinity, alignment: .leading)
                     .background((model.isError ? Color.orange : accent).opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
             }
+            queueNotice
             settings
             if let problem = model.validationMessage, !model.loadingPrinters {
                 Text(problem).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -40,6 +43,39 @@ struct PrintReviewView: View {
             }
         }
         .onAppear { model.refreshPrinters() }
+        .task(id: model.template.printerID) { await model.monitorQueue(for: model.template.printerID) }
+        .alert("Resume printer?", isPresented: $showResumeConfirmation) {
+            Button("Cancel", role: .cancel) { resumePrinterID = nil }
+            Button("Resume printer") {
+                if let id = resumePrinterID { model.resumePrinter(id) }
+                resumePrinterID = nil
+            }
+        } message: {
+            Text("Existing queued jobs may start printing, including partially printed jobs. Check Printers & queues first if you no longer need them. PDFMe won’t resend your files.")
+        }
+    }
+
+    @ViewBuilder private var queueNotice: some View {
+        if model.queueStatus?.isPaused == true || model.queueError != nil {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(model.queueStatus?.isPaused == true ? "Printer queue paused" : "Queue unavailable", systemImage: "exclamationmark.circle")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(model.queueStatus?.reason ?? model.queueError ?? "Resume the queue before printing.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Printers & queues", action: model.openPrintSettings)
+                    Spacer()
+                    if model.resumingPrinter { ProgressView().controlSize(.small) }
+                    else if model.queueStatus?.isPaused == true {
+                        Button("Resume printer") {
+                            resumePrinterID = model.template.printerID
+                            showResumeConfirmation = true
+                        }.disabled(model.busy)
+                    }
+                }.controlSize(.small)
+            }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 
     private var fileList: some View {
@@ -178,7 +214,7 @@ struct PrintReviewView: View {
             }
         }.font(.system(size: 12)).padding(14)
             .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
-            .disabled(model.busy)
+            .disabled(model.busy || model.resumingPrinter)
     }
 
     private var printerOptions: [(String, String)] {
@@ -213,7 +249,7 @@ struct PrintActionBar: View {
                         Text("\(plan.sheetCount) \(plan.sheetCount == 1 ? "sheet" : "sheets") total").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Open in Preview") { model.prepare(previewOnly: true) }.disabled(!model.canPrint)
+                    Button("Open in Preview") { model.prepare(previewOnly: true) }.disabled(!model.canPreview)
                     Button("Print") { model.prepare(previewOnly: false) }.buttonStyle(.borderedProminent).disabled(!model.canPrint)
                 }
             }
