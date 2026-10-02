@@ -6,6 +6,14 @@ import PDFMeCore
 
 @MainActor
 final class PrintModel: ObservableObject {
+    @Published var directPrinting = UserDefaults.standard.bool(forKey: PrintTransport.preferenceKey) {
+        didSet {
+            UserDefaults.standard.set(directPrinting, forKey: PrintTransport.preferenceKey)
+            queueStatus = nil; queueError = nil
+        }
+    }
+    @Published private(set) var directJobStatus: String?
+    @Published private(set) var checkingJobStatus = false
     @Published var inputs: [PrintInput] = [] { didSet { refreshPreview() } }
     @Published var printers: [Printer] = []
     @Published var capabilities: PrinterCapabilities?
@@ -130,23 +138,24 @@ final class PrintModel: ObservableObject {
     }
     var changed: Bool { templates.first(where: { $0.id == selectedTemplateID }) != template }
     var canPreview: Bool { !busy && !resumingPrinter && !loadingPrinters && !loadingCapabilities && !inputs.isEmpty && validationMessage == nil }
-    var canPrint: Bool { canPreview && queueStatus?.isPaused != true && queueError == nil }
+    var canPrint: Bool { canPreview && (directPrinting || (queueStatus?.isPaused != true && queueError == nil)) }
 
     // SwiftUI cancels this when the panel closes or the selected printer changes.
     func monitorQueue(for id: String) async {
-        guard !id.isEmpty else { return }
-        while !Task.isCancelled && template.printerID == id {
+        guard !id.isEmpty, !directPrinting else { return }
+        while !Task.isCancelled && template.printerID == id && !directPrinting {
             await refreshQueue(for: id)
             do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
         }
     }
     private func refreshQueue(for id: String) async {
+        guard !directPrinting else { return }
         do {
             let status = try await PrinterQueueService.status(for: id)
-            guard !Task.isCancelled, template.printerID == id else { return }
+            guard !Task.isCancelled, template.printerID == id, !directPrinting else { return }
             queueStatus = status; queueError = nil
         } catch {
-            guard !Task.isCancelled, template.printerID == id else { return }
+            guard !Task.isCancelled, template.printerID == id, !directPrinting else { return }
             queueStatus = nil; queueError = error.localizedDescription
         }
     }
@@ -263,7 +272,7 @@ final class PrintModel: ObservableObject {
                 let newInputs = try await scan.value
                 guard !Task.isCancelled else { return }
                 inputs.append(contentsOf: newInputs)
-                submission = nil; message = nil
+                submission = nil; directJobStatus = nil; message = nil
                 if printers.isEmpty { refreshPrinters() }
             } catch is CancellationError { inform("Cancelled") }
             catch { inform(error.localizedDescription, error: true) }
@@ -284,7 +293,7 @@ final class PrintModel: ObservableObject {
         inputs[index].copies = min(999, max(1, count))
     }
     func remove(_ id: UUID) { if !busy { inputs.removeAll { $0.id == id } } }
-    func clear() { guard !busy else { return }; inputs = []; message = nil; submission = nil; cleanup() }
+    func clear() { guard !busy else { return }; inputs = []; message = nil; submission = nil; directJobStatus = nil; cleanup() }
     func inform(_ text: String, error: Bool = false) { isError = error; message = text }
 
     func prepare(previewOnly: Bool) {
@@ -292,7 +301,7 @@ final class PrintModel: ObservableObject {
             inform(queueStatus?.isPaused == true && !previewOnly ? "Resume the printer queue before printing." : (validationMessage ?? queueError ?? "Add PDF files first."), error: true)
             return
         }
-        let urls = inputs.map(\.url), snapshot = template, counts = inputs.map(\.copies)
+        let urls = inputs.map(\.url), snapshot = template, counts = inputs.map(\.copies), useDirect = directPrinting
         busy = true; submitting = false; progress = 0; stage = "Preparing print layout"; message = nil
         operation = Task {
             defer { busy = false; submitting = false; operation = nil; preparation = nil }
@@ -324,8 +333,18 @@ final class PrintModel: ObservableObject {
                     inform("Preview opened. Nothing has been sent to the printer.")
                 } else {
                     submitting = true; stage = "Sending to printer"
-                    let accepted = try await PrinterService.submit(file: output, template: snapshot, copies: 1)
+                    let accepted: PrintSubmission
+                    if useDirect {
+                        stage = "Connecting to printer"
+                        let endpoint = try await PrinterEndpointResolver.resolve(printerID: snapshot.printerID)
+                        guard let printer = printers.first(where: { $0.id == snapshot.printerID }) else { throw PrintError.message("Select an installed printer.") }
+                        stage = "Checking settings and sending PDF"
+                        accepted = try await DirectPrinterService.submit(file: output, template: snapshot, printer: printer, client: IPPClient(uri: endpoint))
+                    } else {
+                        accepted = try await PrinterService.submit(file: output, template: snapshot, copies: 1)
+                    }
                     submission = accepted
+                    directJobStatus = nil
                     // Remove the submitted batch immediately so reopening cannot print it again.
                     inputs = []
                     cleanup()
@@ -333,6 +352,12 @@ final class PrintModel: ObservableObject {
                     notify(accepted.printerName)
                     await refreshQueue(for: snapshot.printerID)
                 }
+            } catch let failure as DirectPrintFailure {
+                // A known printer job may have printed even if its upload response was lost.
+                // Clear this batch and retain cancellation controls, avoiding a one-click duplicate.
+                submission = failure.submission; directJobStatus = "Submission uncertain"
+                inputs = []; cleanup()
+                inform(failure.localizedDescription, error: true)
             } catch is CancellationError { inform("Print preparation cancelled. Nothing was sent.") }
             catch {
                 inform(error.localizedDescription, error: true)
@@ -350,10 +375,27 @@ final class PrintModel: ObservableObject {
         Task {
             defer { busy = false }
             do {
-                try await PrinterService.cancel(jobID: submission.jobID)
+                if submission.directPrinterURI != nil { try await DirectPrinterService.cancel(submission) }
+                else { try await PrinterService.cancel(jobID: submission.jobID) }
                 self.submission = nil
+                directJobStatus = nil
                 inform("Cancellation requested. Sheets already printed cannot be recalled.")
             } catch { inform(error.localizedDescription, error: true) }
+        }
+    }
+    func checkSubmittedJob() {
+        guard let current = submission, current.directPrinterURI != nil, !checkingJobStatus else { return }
+        checkingJobStatus = true
+        Task {
+            defer { checkingJobStatus = false }
+            do {
+                let status = try await DirectPrinterService.jobStatus(current)
+                guard submission?.jobID == current.jobID, submission?.directPrinterURI == current.directPrinterURI else { return }
+                directJobStatus = status
+            } catch {
+                guard submission?.jobID == current.jobID, submission?.directPrinterURI == current.directPrinterURI else { return }
+                directJobStatus = "Status unavailable. Check the printer; the job may already have printed."
+            }
         }
     }
     func cleanup() {

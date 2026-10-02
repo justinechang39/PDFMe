@@ -1,5 +1,6 @@
 import AppKit
 import ServiceManagement
+import PDFMeCore
 
 enum LoginItem {
     static var status: SMAppService.Status { SMAppService.mainApp.status }
@@ -32,6 +33,12 @@ enum LoginItem {
     /// Operate from the installed app bundle without opening the interface.
     static func handleCommandLine() -> Bool {
         let arguments = CommandLine.arguments
+        if arguments.contains("--enable-direct-printing") || arguments.contains("--disable-direct-printing") || arguments.contains("--print-transport-status") {
+            if arguments.contains("--enable-direct-printing") { UserDefaults.standard.set(true, forKey: PrintTransport.preferenceKey) }
+            if arguments.contains("--disable-direct-printing") { UserDefaults.standard.set(false, forKey: PrintTransport.preferenceKey) }
+            print("Printing: \(UserDefaults.standard.bool(forKey: PrintTransport.preferenceKey) ? "direct IPP" : "macOS")")
+            return true
+        }
         guard arguments.contains("--enable-start-at-login") || arguments.contains("--disable-start-at-login") || arguments.contains("--login-item-status") else { return false }
         do {
             if arguments.contains("--enable-start-at-login") { try setEnabled(true) }

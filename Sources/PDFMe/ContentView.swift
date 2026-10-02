@@ -229,6 +229,7 @@ struct ContentView: View {
     private var settingsView: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text("Settings").font(.system(size: 30, design: .serif))
+            DirectPrintSettingView(model: model.printing)
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Start at login", isOn: Binding(get: { model.startsAtLogin }, set: model.setStartAtLogin))
                     .toggleStyle(.switch).controlSize(.small).font(.system(size: 12))
@@ -258,7 +259,7 @@ struct ContentView: View {
             Divider()
             VStack(alignment: .leading, spacing: 8) {
                 Label("Local processing", systemImage: "lock.shield").font(.system(size: 13, weight: .medium))
-                Text("No uploads, accounts, or analytics. LibreOffice handles conversion locally. Fonts and complex Word layouts can look slightly different; review important documents after conversion.").font(.system(size: 11)).foregroundStyle(muted)
+                Text("No cloud service, accounts, or analytics. LibreOffice converts documents locally. Print jobs go to your selected printer. Fonts and complex Word layouts can look slightly different; review important documents after conversion.").font(.system(size: 11)).foregroundStyle(muted)
                 Text("Passwords are used for one batch and never stored. Password protection is applied by macOS PDFKit.").font(.system(size: 11)).foregroundStyle(muted)
             }
             HStack {

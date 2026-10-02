@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0
+
+- Add optional Direct PDF printing over IPP/IPPS using native macOS networking, with no new installed dependencies.
+- Resolve the selected network printer using its installed address and Bonjour resource path; send the prepared PDF without macOS print filters.
+- Validate native PDF support and requested paper, color, orientation, and duplex settings before creating a job. Send copies and pages per side as 1 because PDFMe already composes them.
+- Keep a persistent toggle in Print PDF and Settings to return to macOS printing. Existing installs retain macOS printing unless enabled.
+- Add direct job status and cancellation. Keep uncertain uploads from being resent automatically; clear their batch and retain the job number for cancellation.
+- Test the protocol with simulated printers, a byte-for-byte PDF upload over 32 MB, redirects, rejected settings, and dropped HTTP connections. No physical printing in automated tests.
+
 ## 1.3.1
 
 - Detect paused printer queues while Print PDF is open and check again before submitting.

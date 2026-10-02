@@ -16,12 +16,12 @@
 - **Optional password protection.** Choose and confirm a password for each batch; it is never persisted or passed in command-line arguments.
 - **Batch conversion**, honest stage-based progress, cancellation, completion notifications, and shortcuts to open or reveal results.
 - **Existing files stay safe.** `Report.pdf` becomes `Report (2).pdf` if needed, even when a save dialog names an existing file.
-- **Local processing.** No account, upload service, or telemetry. Printing sends the prepared job through macOS to the printer you explicitly select.
+- **Local processing.** No account, cloud upload service, or telemetry. Print through macOS or send PDF directly to your selected network printer over IPP.
 - Native **SwiftUI + AppKit**, keyboard-accessible controls, and support for Reduce Motion.
 
 ## Getting started
 
-Requires **macOS 13 or later**. DOCX conversion additionally requires [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) in `/Applications` or `~/Applications`. PDF printing uses the built-in macOS print system and an installed printer; LibreOffice is not needed for printing.
+Requires **macOS 13 or later**. DOCX conversion additionally requires [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) in `/Applications` or `~/Applications`. PDF printing needs an installed printer; LibreOffice is not needed. Direct printing uses macOS networking and an IPP printer that accepts PDF, with no additional installation.
 
 1. For DOCX conversion, install LibreOffice (or run `brew install --cask libreoffice`). Printing PDFs does not require LibreOffice.
 2. Download the ZIP matching your Mac from [Releases](https://github.com/justinechang39/PDFMe/releases). `arm64` is for Apple silicon; `x86_64` is for Intel when available.
@@ -42,7 +42,19 @@ Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or
 4. Click a PDF in the list to see its sheet layout on the right. Use the arrows to inspect its printed sides. **Open in Preview** opens the complete batch in macOS Preview.
 5. Click **Print** to send one job to the selected printer.
 
-After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s queue and cancellation controls. Previewing or a failed submission keeps the files for review.
+After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s status and cancellation controls. Previewing or a failure before upload keeps the files for review. An uncertain direct upload also clears the batch to prevent accidental duplicates and retains its printer job number.
+
+### Direct PDF printing
+
+Enable **Direct PDF printing** in Print PDF or Settings to send the composed PDF to the selected network printer using IPP/IPPS. It bypasses the Mac queue and its PDF/raster filters. Turn it off at any time to return to macOS printing; saved templates stay intact. The default remains macOS printing until you enable it.
+
+Connect to the printer’s network and allow PDFMe access to the local network if macOS asks. Bonjour printers are resolved by service name, advertised host, port, and resource path each time you print, so a changed IP address does not require rebuilding the app. Direct printing does not support USB-only printers, legacy socket/LPD queues, printers that require HTTP authentication, or printers without native PDF and Create-Job/Send-Document support. Use macOS printing for those devices.
+
+PDFMe checks the printer’s PDF capabilities and validates the exact settings before uploading. Copies, ordering, blank backs, and 1/2/4-up layout are already in the prepared PDF; the printer receives **copies=1** and **number-up=1**, along with explicit paper, orientation, duplex edge, and color. Where supported, scaling is disabled for direct jobs because PDFMe has already composed the sheet with margins. Unsupported or substituted settings block upload. Printer firmware still controls physical output, so test duplex and collation on your printer before relying on this path for a large batch.
+
+Direct jobs do not appear in the Mac queue. PDFMe retains the printer’s job number and provides **Check status** and **Cancel this job**, even after switching modes. A receipt confirms submission only. Printers may discard completed job history; missing status never means the job definitely completed. If an upload response is lost, PDFMe reports uncertainty and never automatically retries or falls back to macOS printing. Check the printer before sending the file again.
+
+Read the [protocol design and references](docs/direct-printing.md) for implementation details.
 
 If macOS pauses the selected printer queue, PDFMe shows the queue’s error and a **Resume printer** button. It checks every five seconds while Print PDF is open and again before submitting a job. Preview remains available while paused. Resuming requires confirmation because existing queued jobs, including partially printed ones, may start printing. Use **Printers & queues** to remove unwanted jobs first. PDFMe verifies the queue resumed; it never automatically retries documents, releases held jobs, or changes the printer’s error policy. A resumed Mac queue does not guarantee that the physical printer is ready; recurring errors may require attention on the printer itself.
 
@@ -75,13 +87,13 @@ For example, with two copies of A and one copy of B, the job contains **A, A, B*
 
 Two-up places pages side by side on each printed side; it is not booklet imposition. Landscape and short-edge duplex normally produce the expected left/right page turning for this arrangement. Printer drivers can differ, so test one sheet before a large run.
 
-PDFMe composes the sheet layout itself with an 18-point outer margin and 12-point gap, preserving source page aspect ratios, crop boxes, rotations, and printable annotations. The printer fits the prepared sheet to its printable area, so the physical scale can differ slightly from the preview. This release does not offer actual-size technical drawing output, custom margins, finishing/stapling, manual duplex, or page-range selection.
+PDFMe composes the sheet layout itself with an 18-point outer margin and 12-point gap, preserving source page aspect ratios, crop boxes, rotations, and printable annotations. In macOS mode the printer fits the prepared sheet to its printable area, so the physical scale can differ slightly from the preview. Direct mode requests no extra scaling when supported. This release does not offer actual-size technical drawing output, custom margins, finishing/stapling, manual duplex, or page-range selection.
 
 **Print as image** rasterizes each composed side at the selected resolution before spooling. This can help with PDFs whose fonts or graphics print incorrectly, but can be slower and produce larger jobs. It preserves the original files. Extremely large paper/resolution combinations are blocked with a prompt to lower resolution to limit memory usage.
 
 ### Queue status and privacy
 
-A success notification means **submitted to the system queue**, not physically printed. The printer can still be offline, paused, out of paper, or require attention. PDFMe shows the job ID, provides a link to **Printers & queues**, and can request cancellation of its own submitted job. Sheets already printed cannot be recalled. After a timeout or an ambiguous spooler reply, check the queue before retrying to avoid duplicate copies.
+A success notification means **submitted**, not physically printed. In macOS mode this means accepted by the system queue; in direct mode it means accepted by the printer’s IPP endpoint. The printer can still be offline, paused, out of paper, or require attention. PDFMe shows the job ID, provides a link to **Printers & queues**, and can request cancellation of its own submitted job. Sheets already printed cannot be recalled. After a timeout or an ambiguous spooler reply, check the queue before retrying to avoid duplicate copies.
 
 Locked PDFs and PDFs that prohibit printing are rejected. Source PDFs are never edited. Temporary print files live in a private directory and are removed after spooling; preview files are retained for the current app session until the list is cleared or PDFMe quits. The macOS print spooler manages its own copies. A crash can leave temporary files for macOS to clean up. Saved templates contain local printer names/IDs and preferences, not the dropped files or their paths.
 
@@ -101,7 +113,7 @@ PDFMe uses LibreOffice’s Word import and PDF export engine. Complex layouts, u
 
 Password protection requires at least eight characters and matching confirmation. One password applies to the current batch only. macOS PDFKit encrypts the output; PDFMe verifies that it is locked and can be reopened with the supplied password before publishing it. It does not claim a particular encryption algorithm across macOS versions. Passwords are not written to preferences, logs, or process arguments; they exist in memory for the batch. Swift strings do not guarantee cryptographic memory erasure.
 
-Conversion uses a private temporary workspace and isolated LibreOffice profile, with macros and automatic linked-content updates disabled. Temporary copies are removed after success, failure, or cancellation. A force quit or machine crash can leave temporary files for macOS to clean up; cleanup is not secure disk erasure. LibreOffice runs with your user permissions and is a separately installed dependency, not a security sandbox. DOCX conversion makes no network requests from PDFMe; printing explicitly submits to your chosen printer through macOS; untrusted documents should always be treated with care.
+Conversion uses a private temporary workspace and isolated LibreOffice profile, with macros and automatic linked-content updates disabled. Temporary copies are removed after success, failure, or cancellation. A force quit or machine crash can leave temporary files for macOS to clean up; cleanup is not secure disk erasure. LibreOffice runs with your user permissions and is a separately installed dependency, not a security sandbox. DOCX conversion makes no network requests from PDFMe; printing explicitly submits to your chosen printer through macOS or directly over IPP; untrusted documents should always be treated with care.
 
 Recent results are in memory only and disappear when PDFMe quits. Quality, protection, save-location preferences, and print templates persist. Output files receive owner-only file permissions; originals are never edited. Completed PDFs remain after cancelling a batch.
 
@@ -129,7 +141,7 @@ The script makes an app bundle and ZIP for the current Mac’s architecture, the
 swift test
 ```
 
-Both test paths need LibreOffice for conversion checks; XCTest skips those tests when it is absent. The standalone tests generate sample documents under ignored `work/` and retain PDFs for visual inspection. CI installs LibreOffice and runs the conversion and print checks. Print checks never call the submission API or require a physical printer.
+Both test paths need LibreOffice for conversion checks; XCTest skips those tests when it is absent. The standalone tests generate sample documents under ignored `work/` and retain PDFs for visual inspection. CI installs LibreOffice and runs the conversion and print checks. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer. The wire checks use Python 3 and loopback networking.
 
 ## How it works
 

@@ -37,6 +37,10 @@ public struct PrinterCapabilities: Sendable {
 public struct PrintSubmission: Sendable {
     public let jobID: String
     public let printerName: String
+    public let directPrinterURI: URL?
+    public init(jobID: String, printerName: String, directPrinterURI: URL? = nil) {
+        self.jobID = jobID; self.printerName = printerName; self.directPrinterURI = directPrinterURI
+    }
 }
 
 /// State of this Mac's queue, not a claim that the physical printer is ready.

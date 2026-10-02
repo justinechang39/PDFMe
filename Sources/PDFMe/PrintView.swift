@@ -12,6 +12,7 @@ struct PrintReviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            DirectPrintSettingView(model: model)
             HStack {
                 Text("PDF FILES").font(.system(size: 10, weight: .semibold, design: .monospaced)).tracking(1)
                 Spacer()
@@ -34,16 +35,19 @@ struct PrintReviewView: View {
             if let submission = model.submission {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Job: \(submission.jobID)").font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
-                    Text("The job is in the system queue. Submission does not mean printing is complete.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(submission.directPrinterURI == nil ? "Submitted to the macOS queue." : "Sent directly to the printer. Receipt does not confirm printing is complete.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    if let status = model.directJobStatus { Text(status).font(.system(size: 11)).foregroundStyle(.secondary) }
                     HStack {
-                        Button("Printers & queues", action: model.openPrintSettings)
+                        if submission.directPrinterURI != nil {
+                            Button(model.checkingJobStatus ? "Checking…" : "Check status", action: model.checkSubmittedJob).disabled(model.checkingJobStatus)
+                        } else { Button("Printers & queues", action: model.openPrintSettings) }
                         Button("Cancel this job", action: model.cancelSubmittedJob).disabled(model.busy)
                     }.controlSize(.small)
                 }
             }
         }
         .onAppear { model.refreshPrinters() }
-        .task(id: model.template.printerID) { await model.monitorQueue(for: model.template.printerID) }
+        .task(id: "\(model.template.printerID)-\(model.directPrinting)") { await model.monitorQueue(for: model.template.printerID) }
         .alert("Resume printer?", isPresented: $showResumeConfirmation) {
             Button("Cancel", role: .cancel) { resumePrinterID = nil }
             Button("Resume printer") {
@@ -56,7 +60,7 @@ struct PrintReviewView: View {
     }
 
     @ViewBuilder private var queueNotice: some View {
-        if model.queueStatus?.isPaused == true || model.queueError != nil {
+        if !model.directPrinting && (model.queueStatus?.isPaused == true || model.queueError != nil) {
             VStack(alignment: .leading, spacing: 10) {
                 Label(model.queueStatus?.isPaused == true ? "Printer queue paused" : "Queue unavailable", systemImage: "exclamationmark.circle")
                     .font(.system(size: 12, weight: .semibold))
