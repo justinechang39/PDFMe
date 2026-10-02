@@ -119,16 +119,40 @@ Recent results are in memory only and disappear when PDFMe quits. Quality, prote
 
 ## Build from source
 
-Apple Command Line Tools with Swift 5.9 or later are sufficient to build. No third-party Swift packages are required.
+Builds run locally. GitHub Actions is disabled for this repository and the build workflow has been removed; pushes and pull requests do not start GitHub builds. Releases can be built and uploaded manually.
+
+Requires macOS 13 or later and Apple Command Line Tools. The commands below were verified on Apple silicon with Swift 6.2, Python 3.11.6, and LibreOffice 26.2.3.2. No third-party Swift packages are required. Install Command Line Tools with `xcode-select --install` if needed, then verify the selected tools:
+
+```sh
+xcode-select -p
+swift --version
+```
+
+LibreOffice is needed for DOCX conversion and its tests, but not for building PDFMe or testing PDF printing. The standalone test scripts also require Python 3 (`python3 --version`).
 
 ```sh
 git clone https://github.com/justinechang39/PDFMe.git
 cd PDFMe
 ./scripts/build.sh
-open dist/PDFMe.app
+/usr/bin/codesign --verify --deep --strict --verbose=2 dist/PDFMe.app
 ```
 
-The script makes an app bundle and ZIP for the current Mac’s architecture, then ad-hoc signs the app. Set `CODE_SIGN_IDENTITY` to your own signing identity if you maintain a distribution build. Developer ID signing, hardened runtime, and notarization are release-maintainer responsibilities and are not configured by this script.
+The script makes `dist/PDFMe.app` and `dist/PDFMe-macOS-$(uname -m).zip` for the current Mac’s architecture, then ad-hoc signs the app. Set `CODE_SIGN_IDENTITY` to your own signing identity if you maintain a distribution build. Developer ID signing, hardened runtime, and notarization are release-maintainer responsibilities and are not configured by this script.
+
+### Install a local build
+
+If PDFMe is running, choose **Quit PDFMe** from its panel before replacing the app. From the repository directory:
+
+```sh
+/usr/bin/ditto dist/PDFMe.app /Applications/PDFMe.app
+/usr/bin/codesign --verify --deep --strict --verbose=2 /Applications/PDFMe.app
+/Applications/PDFMe.app/Contents/MacOS/PDFMe --print-transport-status
+open /Applications/PDFMe.app
+```
+
+Replacing the bundle preserves saved templates and preferences, which are stored separately. The status command only reads the printing preference; it does not start the UI or send a print job. These copy, signature, and status commands have also been verified with a staged installation outside Applications. Opening the installed app shows its icon in the menu bar. Use **Settings → Start at login** if desired, and allow local-network access if macOS asks when using direct printing.
+
+### Test locally
 
 ```sh
 # Real conversion, encryption, cancellation, and file-safety checks:
@@ -141,7 +165,9 @@ The script makes an app bundle and ZIP for the current Mac’s architecture, the
 swift test
 ```
 
-Both test paths need LibreOffice for conversion checks; XCTest skips those tests when it is absent. The standalone tests generate sample documents under ignored `work/` and retain PDFs for visual inspection. CI installs LibreOffice and runs the conversion and print checks. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer. The wire checks use Python 3 and loopback networking.
+`scripts/test.sh` requires LibreOffice in `/Applications` or `~/Applications`. `scripts/test-print.sh` does not need LibreOffice; it uses Swift, Python 3, and the built-in macOS printing tools. Both scripts work with Command Line Tools alone and generate fixtures under ignored `work/`. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer.
+
+`swift test` additionally requires full Xcode selected and licensed; Command Line Tools alone may report a missing XCTest module. Conversion XCTest cases skip when LibreOffice is absent. Do not change the selected developer directory just to run the standalone scripts.
 
 ## How it works
 
