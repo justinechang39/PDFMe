@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2
+
+- Fix the top-level Finder action silently returning when Finder reconstructs its menu item without custom metadata. Read the current file selection from the Finder controller inside the action.
+- Test the actual Objective-C action with a reconstructed sender, multiple PDFs, stale metadata, missing selection, and handoff failures.
+- Report selection and launch errors instead of silently ignoring them; log handoff status without file paths.
+
 ## 1.5.1
 
 - Add a sandboxed Finder extension that provides “Add to PDFMe Print Queue” directly in the contextual menu for PDF-only selections.

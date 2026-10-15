@@ -1,17 +1,40 @@
 import AppKit
 import FinderSync
+import OSLog
 
 @objc(PDFMeFinderSync)
 final class PDFMeFinderSync: FIFinderSync {
-    override init() {
+    private static let logger = Logger(subsystem: "io.github.justinechang39.PDFMe.Finder", category: "Queue handoff")
+    // Injectable boundaries let checks invoke the actual Objective-C menu action
+    // with a reconstructed sender, without opening documents or using Finder UI.
+    var selectedURLs: () -> [URL] = { FIFinderSyncController.default().selectedItemURLs() ?? [] }
+    var extensionURL = Bundle.main.bundleURL
+    var openDocuments: ([URL], URL, @escaping (Error?) -> Void) -> Void = { urls, app, completion in
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: configuration) { _, error in completion(error) }
+    }
+    var reportError: (String) -> Void = { message in
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Couldn’t add PDFs to PDFMe"
+            alert.informativeText = message
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
+    override convenience init() { self.init(monitorFolders: true) }
+    init(monitorFolders: Bool) {
         super.init()
-        // Finder supplies menu callbacks for browsed folders. No crawling, badges,
-        // file observers, or background PDF processing takes place in this extension.
-        FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/", isDirectory: true)]
+        if monitorFolders {
+            // Finder supplies callbacks for browsed folders; no crawling or badges.
+            FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/", isDirectory: true)]
+        }
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        Self.makeMenu(kind: menuKind, urls: FIFinderSyncController.default().selectedItemURLs() ?? [], target: self)
+        Self.makeMenu(kind: menuKind, urls: selectedURLs(), target: self)
     }
 
     static func makeMenu(kind: FIMenuKind, urls: [URL], target: AnyObject) -> NSMenu? {
@@ -20,26 +43,31 @@ final class PDFMeFinderSync: FIFinderSync {
         let item = NSMenuItem(title: "Add to PDFMe Print Queue", action: #selector(addToQueue(_:)), keyEquivalent: "")
         item.target = target
         item.image = NSImage(systemSymbolName: "printer", accessibilityDescription: nil)
-        item.representedObject = urls
         menu.addItem(item)
         return menu
     }
 
     @objc private func addToQueue(_ sender: NSMenuItem) {
-        guard let urls = sender.representedObject as? [URL], FinderSelection.accepts(urls),
-              let app = FinderSelection.containingApp(for: Bundle.main.bundleURL) else { return }
-        // Document URLs are handed to the containing app through Launch Services.
-        // No shell, command-line arguments, shared files, or printer access is needed.
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: configuration) { _, error in
-            guard let error else { return }
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = "Couldn’t open PDFMe"
-                alert.informativeText = error.localizedDescription
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
+        // Finder reconstructs the sender across processes. Its representedObject
+        // cannot carry our URLs. Query the controller inside the action instead.
+        let urls = selectedURLs()
+        Self.logger.notice("Queue action received with \(urls.count) selected items")
+        guard FinderSelection.accepts(urls) else {
+            reportError("Select one or more PDF files in Finder and try again.")
+            return
+        }
+        guard let app = FinderSelection.containingApp(for: extensionURL) else {
+            Self.logger.error("Could not resolve containing app")
+            reportError("PDFMe’s Finder extension is not inside its app. Reinstall PDFMe in Applications.")
+            return
+        }
+        let report = reportError
+        openDocuments(urls, app) { error in
+            if let error {
+                Self.logger.error("Launch Services handoff failed: \(error.localizedDescription, privacy: .private)")
+                report(error.localizedDescription)
+            } else {
+                Self.logger.notice("Launch Services accepted the PDF queue handoff")
             }
         }
     }
