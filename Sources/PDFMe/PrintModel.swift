@@ -4,12 +4,26 @@ import UniformTypeIdentifiers
 import UserNotifications
 import PDFMeCore
 
+enum PrintAttemptOutcome { case sent, uncertain, failed, cancelled }
+
 @MainActor
 final class PrintModel: ObservableObject {
+    @Published var reservedForQueue = false
+    @Published private(set) var requiresSubmissionReview = false
+    private(set) var lastAttempt: PrintAttemptOutcome?
+    var catalogChanged: (() -> Void)?
+    var transportChanged: ((Bool) -> Void)?
+    // Test seam exercises the real composition and queue lifecycle without printing.
+    var submitPrepared: ((URL, PrintTemplate, Bool) async throws -> PrintSubmission)?
+    var notificationsEnabled = true
+    var occupied: Bool { busy || reservedForQueue }
+    func acknowledgeSubmissionReview() { requiresSubmissionReview = false }
+
     @Published var directPrinting = UserDefaults.standard.bool(forKey: PrintTransport.preferenceKey) {
         didSet {
             UserDefaults.standard.set(directPrinting, forKey: PrintTransport.preferenceKey)
             queueStatus = nil; queueError = nil
+            if oldValue != directPrinting { transportChanged?(directPrinting) }
         }
     }
     @Published private(set) var directJobStatus: String?
@@ -54,7 +68,8 @@ final class PrintModel: ObservableObject {
     private var previewPlan: PrintPlan?
     private var previewTask: Task<Void, Never>?
     private var previewGeneration = UUID()
-    private var previewVisible = false
+    private var previewObserverCount = 0
+    private var previewVisible: Bool { previewObserverCount > 0 }
 
     var previewInput: PrintInput? { inputs.first { $0.id == selectedPreviewID } }
     var previewSideIndex: Int? { previewIndices.indices.contains(previewOffset) ? previewIndices[previewOffset] : nil }
@@ -78,8 +93,8 @@ final class PrintModel: ObservableObject {
         renderPreview()
     }
     func setPreviewVisible(_ visible: Bool) {
-        previewVisible = visible
-        if visible { refreshPreview() }
+        previewObserverCount = max(0, previewObserverCount + (visible ? 1 : -1))
+        if previewVisible { refreshPreview() }
         else { previewTask?.cancel(); previewGeneration = UUID(); previewLoading = false }
     }
     private func refreshPreview() {
@@ -137,8 +152,8 @@ final class PrintModel: ObservableObject {
         return nil
     }
     var changed: Bool { templates.first(where: { $0.id == selectedTemplateID }) != template }
-    var canPreview: Bool { !busy && !resumingPrinter && !loadingPrinters && !loadingCapabilities && !inputs.isEmpty && validationMessage == nil }
-    var canPrint: Bool { canPreview && (directPrinting || (queueStatus?.isPaused != true && queueError == nil)) }
+    var canPreview: Bool { !occupied && !resumingPrinter && !loadingPrinters && !loadingCapabilities && !inputs.isEmpty && validationMessage == nil }
+    var canPrint: Bool { canPreview && !requiresSubmissionReview && (directPrinting || (queueStatus?.isPaused != true && queueError == nil)) }
 
     // SwiftUI cancels this when the panel closes or the selected printer changes.
     func monitorQueue(for id: String) async {
@@ -160,7 +175,7 @@ final class PrintModel: ObservableObject {
         }
     }
     func resumePrinter(_ id: String) {
-        guard !busy, !resumingPrinter, template.printerID == id else { return }
+        guard !occupied, !resumingPrinter, template.printerID == id else { return }
         resumingPrinter = true
         Task {
             defer { resumingPrinter = false }
@@ -250,19 +265,20 @@ final class PrintModel: ObservableObject {
     private func persist() {
         if let data = try? JSONEncoder().encode(templates) { UserDefaults.standard.set(data, forKey: "printTemplates.v1") }
         UserDefaults.standard.set(defaultTemplateID?.uuidString, forKey: "defaultPrintTemplate")
+        catalogChanged?()
     }
 
     func chooseFiles() {
-        guard !busy else { return }
+        guard !occupied else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.pdf]; panel.allowsMultipleSelection = true; panel.canChooseDirectories = false
         panel.prompt = "Add PDFs"; panel.message = "Review files and print settings before printing."
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK { accept(panel.urls) }
     }
-    func accept(_ urls: [URL]) {
-        show?()
-        guard !busy else { inform("Wait for the current print operation to finish.", error: true); return }
+    func accept(_ urls: [URL], reveal: Bool = true) {
+        if reveal { show?() }
+        guard !occupied, !requiresSubmissionReview else { inform("Finish or clear the current print operation before adding files.", error: true); return }
         busy = true; progress = 0; stage = "Checking PDFs"
         operation = Task {
             defer { busy = false; operation = nil; inspection = nil }
@@ -272,36 +288,38 @@ final class PrintModel: ObservableObject {
                 let newInputs = try await scan.value
                 guard !Task.isCancelled else { return }
                 inputs.append(contentsOf: newInputs)
-                submission = nil; directJobStatus = nil; message = nil
+                submission = nil; directJobStatus = nil; message = nil; requiresSubmissionReview = false
                 if printers.isEmpty { refreshPrinters() }
             } catch is CancellationError { inform("Cancelled") }
             catch { inform(error.localizedDescription, error: true) }
         }
     }
     func move(_ index: Int, by offset: Int) {
-        guard !busy, inputs.indices.contains(index), inputs.indices.contains(index + offset) else { return }
+        guard !occupied, inputs.indices.contains(index), inputs.indices.contains(index + offset) else { return }
         inputs.swapAt(index, index + offset)
     }
     func move(_ id: UUID, to target: UUID) {
-        guard !busy, id != target, let source = inputs.firstIndex(where: { $0.id == id }),
+        guard !occupied, id != target, let source = inputs.firstIndex(where: { $0.id == id }),
               let destination = inputs.firstIndex(where: { $0.id == target }) else { return }
         let input = inputs.remove(at: source)
         inputs.insert(input, at: destination)
     }
     func setCopies(_ count: Int, for id: UUID) {
-        guard !busy, let index = inputs.firstIndex(where: { $0.id == id }) else { return }
+        guard !occupied, let index = inputs.firstIndex(where: { $0.id == id }) else { return }
         inputs[index].copies = min(999, max(1, count))
     }
-    func remove(_ id: UUID) { if !busy { inputs.removeAll { $0.id == id } } }
-    func clear() { guard !busy else { return }; inputs = []; message = nil; submission = nil; directJobStatus = nil; cleanup() }
+    func remove(_ id: UUID) { if !occupied { inputs.removeAll { $0.id == id } } }
+    func clear() { guard !occupied else { return }; inputs = []; message = nil; submission = nil; directJobStatus = nil; requiresSubmissionReview = false; cleanup() }
     func inform(_ text: String, error: Bool = false) { isError = error; message = text }
 
     func prepare(previewOnly: Bool) {
+        lastAttempt = .failed
         guard previewOnly ? canPreview : canPrint else {
             inform(queueStatus?.isPaused == true && !previewOnly ? "Resume the printer queue before printing." : (validationMessage ?? queueError ?? "Add PDF files first."), error: true)
             return
         }
         let urls = inputs.map(\.url), snapshot = template, counts = inputs.map(\.copies), useDirect = directPrinting
+        if !previewOnly { submission = nil; directJobStatus = nil }
         busy = true; submitting = false; progress = 0; stage = "Preparing print layout"; message = nil
         operation = Task {
             defer { busy = false; submitting = false; operation = nil; preparation = nil }
@@ -334,7 +352,9 @@ final class PrintModel: ObservableObject {
                 } else {
                     submitting = true; stage = "Sending to printer"
                     let accepted: PrintSubmission
-                    if useDirect {
+                    if let submitPrepared {
+                        accepted = try await submitPrepared(output, snapshot, useDirect)
+                    } else if useDirect {
                         stage = "Connecting to printer"
                         let endpoint = try await PrinterEndpointResolver.resolve(printerID: snapshot.printerID)
                         guard let printer = printers.first(where: { $0.id == snapshot.printerID }) else { throw PrintError.message("Select an installed printer.") }
@@ -344,24 +364,32 @@ final class PrintModel: ObservableObject {
                         accepted = try await PrinterService.submit(file: output, template: snapshot, copies: 1)
                     }
                     submission = accepted
+                    lastAttempt = .sent
                     directJobStatus = nil
                     // Remove the submitted batch immediately so reopening cannot print it again.
                     inputs = []
                     cleanup()
                     inform("Sent to \(accepted.printerName)")
-                    notify(accepted.printerName)
-                    await refreshQueue(for: snapshot.printerID)
+                    if notificationsEnabled { notify(accepted.printerName) }
+                    if submitPrepared == nil { await refreshQueue(for: snapshot.printerID) }
                 }
             } catch let failure as DirectPrintFailure {
                 // A known printer job may have printed even if its upload response was lost.
                 // Clear this batch and retain cancellation controls, avoiding a one-click duplicate.
+                lastAttempt = .uncertain
                 submission = failure.submission; directJobStatus = "Submission uncertain"
                 inputs = []; cleanup()
                 inform(failure.localizedDescription, error: true)
-            } catch is CancellationError { inform("Print preparation cancelled. Nothing was sent.") }
+            } catch is CancellationError {
+                lastAttempt = submitting ? .uncertain : .cancelled
+                requiresSubmissionReview = submitting
+                inform(submitting ? "Submission interrupted. Check the printer before retrying." : "Print preparation cancelled. Nothing was sent.", error: submitting)
+            }
             catch {
+                lastAttempt = submitting ? .uncertain : .failed
+                requiresSubmissionReview = submitting
                 inform(error.localizedDescription, error: true)
-                if !previewOnly { await refreshQueue(for: snapshot.printerID) }
+                if !previewOnly, submitPrepared == nil { await refreshQueue(for: snapshot.printerID) }
             }
         }
     }
@@ -370,7 +398,7 @@ final class PrintModel: ObservableObject {
         preparation?.cancel(); inspection?.cancel(); operation?.cancel()
     }
     func cancelSubmittedJob() {
-        guard let submission, !busy else { return }
+        guard let submission, !occupied else { return }
         busy = true
         Task {
             defer { busy = false }

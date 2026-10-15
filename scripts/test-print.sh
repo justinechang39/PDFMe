@@ -14,3 +14,6 @@ work/PrintPreviewChecks "$qa_dir"
 swiftc -parse-as-library -I "$bin_dir/Modules" "$bin_dir/PDFMeCore.build/"*.swift.o scripts/DirectPrintChecks.swift -o work/DirectPrintChecks
 work/DirectPrintChecks "$qa_dir"
 python3 scripts/ipp-wire-check.py work/DirectPrintChecks "$qa_dir/01 Sample A.pdf"
+
+swiftc -parse-as-library -I "$bin_dir/Modules" "$bin_dir/PDFMeCore.build/"*.swift.o Sources/PDFMe/PrintModel.swift Sources/PDFMe/PrintQueueModel.swift Sources/PDFMe/FinderPrintService.swift scripts/PrintQueueChecks.swift -o work/PrintQueueChecks
+work/PrintQueueChecks "$qa_dir"

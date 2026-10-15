@@ -48,6 +48,8 @@ final class AppModel: ObservableObject {
     var panelSize: NSSize { NSSize(width: printingMode ? 840 : 420, height: 700) }
     var panelSizeChanged: (() -> Void)?
     let printing = PrintModel()
+    lazy var printQueue = PrintQueueModel(primary: printing)
+    var openPrintWindow: (() -> Void)?
     var task: Task<Void, Never>?
     var worker: Task<URL, Error>?
     var show: (() -> Void)?

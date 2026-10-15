@@ -6,8 +6,8 @@
 <key>CFBundleIdentifier</key><string>io.github.justinechang39.PDFMe</string>
 <key>CFBundleExecutable</key><string>PDFMe</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.4.0</string>
-<key>CFBundleVersion</key><string>7</string>
+<key>CFBundleShortVersionString</key><string>1.5.0</string>
+<key>CFBundleVersion</key><string>8</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>
@@ -15,6 +15,14 @@
 <key>NSLocalNetworkUsageDescription</key><string>PDFMe connects to the network printer you select to send PDFs and check print jobs.</string>
 <key>NSBonjourServices</key><array><string>_ipp._tcp</string><string>_ipps._tcp</string></array>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+<key>NSServices</key><array><dict>
+<key>NSMenuItem</key><dict><key>default</key><string>Add to PDFMe Print Queue</string></dict>
+<key>NSMessage</key><string>addToPrintQueue</string>
+<key>NSPortName</key><string>PDFMe</string>
+<key>NSSendFileTypes</key><array><string>com.adobe.pdf</string></array>
+<key>NSRequiredContext</key><dict/>
+<key>NSServiceDescription</key><string>Add selected PDFs to PDFMe and review print settings.</string>
+</dict></array>
 <key>CFBundleDocumentTypes</key><array><dict>
 <key>CFBundleTypeName</key><string>Word document</string>
 <key>CFBundleTypeRole</key><string>Viewer</string>

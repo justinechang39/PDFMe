@@ -4,28 +4,39 @@ import UniformTypeIdentifiers
 
 struct PrintReviewView: View {
     @ObservedObject var model: PrintModel
+    var showsFiles = true
+    var showsTransport = true
     @State private var dropTargeted = false
     @State private var reorderTarget: UUID?
     @State private var resumePrinterID: String?
     @State private var showResumeConfirmation = false
+    @State private var showRetryConfirmation = false
     private let accent = Color(red: 0.24, green: 0.37, blue: 0.27)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            DirectPrintSettingView(model: model)
+            if showsTransport { DirectPrintSettingView(model: model) }
+            if showsFiles {
             HStack {
                 Text("PDF FILES").font(.system(size: 10, weight: .semibold, design: .monospaced)).tracking(1)
                 Spacer()
                 Button("Add PDFs", action: model.chooseFiles).controlSize(.small)
                 if !model.inputs.isEmpty { Button("Clear", action: model.clear).controlSize(.small) }
-            }.disabled(model.busy)
+            }.disabled(model.occupied)
             fileList
+            }
             if let message = model.message {
                 Label(message, systemImage: model.isError ? "exclamationmark.circle" : "checkmark.circle")
                     .font(.system(size: 12)).foregroundStyle(model.isError ? Color(red: 0.65, green: 0.27, blue: 0.13) : accent)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(11).frame(maxWidth: .infinity, alignment: .leading)
                     .background((model.isError ? Color.orange : accent).opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            }
+            if model.requiresSubmissionReview {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Check the printer before retrying. This group may already have been received.").font(.system(size: 12))
+                    Button("Allow retry…") { showRetryConfirmation = true }
+                }.padding(12).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
             }
             queueNotice
             settings
@@ -41,13 +52,19 @@ struct PrintReviewView: View {
                         if submission.directPrinterURI != nil {
                             Button(model.checkingJobStatus ? "Checking…" : "Check status", action: model.checkSubmittedJob).disabled(model.checkingJobStatus)
                         } else { Button("Printers & queues", action: model.openPrintSettings) }
-                        Button("Cancel this job", action: model.cancelSubmittedJob).disabled(model.busy)
+                        Button("Cancel this job", action: model.cancelSubmittedJob).disabled(model.occupied)
                     }.controlSize(.small)
                 }
             }
         }
         .onAppear { model.refreshPrinters() }
         .task(id: "\(model.template.printerID)-\(model.directPrinting)") { await model.monitorQueue(for: model.template.printerID) }
+        .alert("Allow this group to be sent again?", isPresented: $showRetryConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Allow retry") { model.acknowledgeSubmissionReview() }
+        } message: {
+            Text("Check the printer and its queue first. If the previous job was received, sending it again will print duplicate copies. You can clear the group instead.")
+        }
         .alert("Resume printer?", isPresented: $showResumeConfirmation) {
             Button("Cancel", role: .cancel) { resumePrinterID = nil }
             Button("Resume printer") {
@@ -74,7 +91,7 @@ struct PrintReviewView: View {
                         Button("Resume printer") {
                             resumePrinterID = model.template.printerID
                             showResumeConfirmation = true
-                        }.disabled(model.busy)
+                        }.disabled(model.occupied)
                     }
                 }.controlSize(.small)
             }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -129,7 +146,7 @@ struct PrintReviewView: View {
                                 }
                                 return provider
                             }
-                    }.font(.system(size: 10)).buttonStyle(.plain).padding(12).disabled(model.busy)
+                    }.font(.system(size: 10)).buttonStyle(.plain).padding(12).disabled(model.occupied)
                         .background(reorderTarget == input.id || model.selectedPreviewID == input.id ? accent.opacity(0.1) : Color.clear)
                         .onDrop(of: [PrintRowDropDelegate.type], delegate: PrintRowDropDelegate(model: model, target: input.id, highlighted: $reorderTarget))
                     if index < model.inputs.count - 1 { Divider().padding(.horizontal, 12) }
@@ -218,7 +235,7 @@ struct PrintReviewView: View {
             }
         }.font(.system(size: 12)).padding(14)
             .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
-            .disabled(model.busy || model.resumingPrinter)
+            .disabled(model.occupied || model.resumingPrinter)
     }
 
     private var printerOptions: [(String, String)] {
@@ -239,7 +256,7 @@ struct PrintActionBar: View {
     @ObservedObject var model: PrintModel
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if model.busy {
+            if model.occupied {
                 HStack {
                     if model.submitting { ProgressView().controlSize(.small) }
                     Text(model.stage).font(.system(size: 11))
@@ -269,13 +286,13 @@ private struct PrintRowDropDelegate: DropDelegate {
     let target: UUID
     @Binding var highlighted: UUID?
 
-    func validateDrop(info: DropInfo) -> Bool { !model.busy && info.hasItemsConforming(to: [Self.type]) }
+    func validateDrop(info: DropInfo) -> Bool { !model.occupied && info.hasItemsConforming(to: [Self.type]) }
     func dropEntered(info: DropInfo) { highlighted = target }
     func dropExited(info: DropInfo) { if highlighted == target { highlighted = nil } }
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: model.busy ? .forbidden : .move) }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: model.occupied ? .forbidden : .move) }
     func performDrop(info: DropInfo) -> Bool {
         highlighted = nil
-        guard !model.busy, let provider = info.itemProviders(for: [Self.type]).first else { return false }
+        guard !model.occupied, let provider = info.itemProviders(for: [Self.type]).first else { return false }
         provider.loadDataRepresentation(forTypeIdentifier: Self.type) { data, _ in
             guard let data, let text = String(data: data, encoding: .utf8), let id = UUID(uuidString: text) else { return }
             Task { @MainActor in model.move(id, to: target) }

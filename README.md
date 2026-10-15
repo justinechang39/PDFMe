@@ -1,8 +1,8 @@
 <div align="center">
   <img src="docs/icon.png" width="100" alt="PDFMe icon">
   <h1>PDFMe</h1>
-  <p><strong>Create and print PDFs from your menu bar.</strong></p>
-  <p>A native macOS menu bar app for DOCX conversion and PDF printing.<br>Saved print templates, collated batches, and local processing.</p>
+  <p><strong>Create PDFs and organize your printing.</strong></p>
+  <p>A native macOS menu bar app and print queue window.<br>Finder shortcuts, saved print templates, and local processing.</p>
   <p><a href="https://github.com/justinechang39/PDFMe/releases/latest">Download</a> · <a href="#getting-started">Get started</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
   <p><img src="https://img.shields.io/badge/macOS-13%2B-416347" alt="macOS 13 or later"> <img src="https://img.shields.io/badge/Swift-native-416347" alt="Native Swift app"> <img src="https://img.shields.io/badge/license-MIT-416347" alt="MIT license"></p>
 </div>
@@ -10,6 +10,8 @@
 ## Features
 
 - **Drop onto the menu bar icon** or the **Create PDF** panel. Click to browse, or use Finder’s **Open With → PDFMe**.
+- **Desktop print queue:** group PDFs by template, adjust settings per group, preview each document, and send groups in order with per-file copies.
+- **Finder shortcut:** select PDFs, right-click → **Services → Add to PDFMe Print Queue**. Review before printing.
 - **Separate workflows:** DOCX only for Create PDF; PDF only for Print PDF. The menu bar icon routes a single-format batch to the appropriate workflow.
 - **Saved beside the original** by default. Turn on **Ask every time** to choose a location for each document.
 - **Small, Balanced, or Best** image quality. Text stays sharp and selectable.
@@ -43,6 +45,25 @@ Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or
 5. Click **Print** to send one job to the selected printer.
 
 After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s status and cancellation controls. Previewing or a failure before upload keeps the files for review. An uncertain direct upload also clears the batch to prevent accidental duplicates and retains its printer job number.
+
+### Desktop Print Queue and Finder
+
+Choose **Open Print Queue** (or the window icon) in the menu bar panel. The resizable window also appears in the Dock while open. Closing it leaves PDFMe in the menu bar; **Mini app** returns to the small panel. The first queue group shares the mini app’s documents and settings, so switching views does not duplicate files.
+
+In Finder, select one or more PDFs and choose **Services → Add to PDFMe Print Queue** from the right-click menu. PDFMe launches if needed, opens its queue window, and adds the files to the selected group. **Open With → PDFMe** also opens PDFs in the queue. Neither action prints automatically. The Finder service advertises PDF support only and rejects mixed selections; unreadable, locked, or print-prohibited PDFs are reported in the app.
+
+1. Use **Add group** to create a group from a saved template.
+2. Drop PDFs on a group, or select it and choose **Add PDFs**.
+3. Select a group to edit its settings on the right. Changes apply to all its documents. Saving a template updates the shared catalog; it does not overwrite another group’s current settings.
+4. Set each document’s **Copies**. Drag its handle within or between groups; its menu provides the same move actions without dragging.
+5. Click a document to see its composed sheet preview. **Open group in Preview** shows that group’s complete layout.
+6. Choose **Print all groups**. PDFMe prepares and submits one group at a time, with one job per group. It waits for acceptance before sending the next, not for physical completion. Different groups may use different installed printers. Groups targeting the same printer are submitted in displayed order; the printer ultimately controls scheduling.
+
+**Stop after this group** leaves future groups unsent. Accepted groups clear immediately and keep their job receipts. Any failure stops the batch; later groups remain queued. If a submission outcome is unknown, inspect the printer before using **Allow retry** or clear that group. A known uncertain direct job keeps its job number and clears its files. PDFMe never automatically retries or switches transports.
+
+The direct-printing toggle applies to all groups. Files, copy counts, group adjustments, and job receipts are in memory for this app session only. Closing/reopening the window keeps unsent work; quitting clears it. Saved templates persist separately. No queued work prints on launch.
+
+If the Finder service does not appear after installing, launch PDFMe once and check **System Settings → Keyboard → Keyboard Shortcuts → Services → Files and Folders** for **Add to PDFMe Print Queue**. You can also use Open With or drag files into the queue.
 
 ### Direct PDF printing
 
@@ -93,7 +114,7 @@ PDFMe composes the sheet layout itself with an 18-point outer margin and 12-poin
 
 ### Queue status and privacy
 
-A success notification means **submitted**, not physically printed. In macOS mode this means accepted by the system queue; in direct mode it means accepted by the printer’s IPP endpoint. The printer can still be offline, paused, out of paper, or require attention. PDFMe shows the job ID, provides a link to **Printers & queues**, and can request cancellation of its own submitted job. Sheets already printed cannot be recalled. After a timeout or an ambiguous spooler reply, check the queue before retrying to avoid duplicate copies.
+A success notification means **submitted**, not physically printed. In macOS mode this means accepted by the system queue; in direct mode it means accepted by the printer’s IPP endpoint. The printer can still be offline, paused, out of paper, or require attention. PDFMe shows the job ID, provides a link to **Printers & queues**, and can request cancellation of its own submitted job. Sheets already printed cannot be recalled. After a timeout or an ambiguous spooler reply, PDFMe blocks another submission until you explicitly allow a retry after checking the printer queue, or clear the group.
 
 Locked PDFs and PDFs that prohibit printing are rejected. Source PDFs are never edited. Temporary print files live in a private directory and are removed after spooling; preview files are retained for the current app session until the list is cleared or PDFMe quits. The macOS print spooler manages its own copies. A crash can leave temporary files for macOS to clean up. Saved templates contain local printer names/IDs and preferences, not the dropped files or their paths.
 
@@ -147,10 +168,11 @@ If PDFMe is running, choose **Quit PDFMe** from its panel before replacing the a
 /usr/bin/ditto dist/PDFMe.app /Applications/PDFMe.app
 /usr/bin/codesign --verify --deep --strict --verbose=2 /Applications/PDFMe.app
 /Applications/PDFMe.app/Contents/MacOS/PDFMe --print-transport-status
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/PDFMe.app
 open /Applications/PDFMe.app
 ```
 
-Replacing the bundle preserves saved templates and preferences, which are stored separately. The status command only reads the printing preference; it does not start the UI or send a print job. These copy, signature, and status commands have also been verified with a staged installation outside Applications. Opening the installed app shows its icon in the menu bar. Use **Settings → Start at login** if desired, and allow local-network access if macOS asks when using direct printing.
+Replacing the bundle preserves saved templates and preferences, which are stored separately. The status command only reads the printing preference; it does not start the UI or send a print job. The copy, signature, status, and Launch Services registration commands have been verified locally. PDFMe registers its Finder service when it launches. Opening the installed app shows its icon in the menu bar. Use **Settings → Start at login** if desired, and allow local-network access if macOS asks when using direct printing.
 
 ### Test locally
 
@@ -158,14 +180,14 @@ Replacing the bundle preserves saved templates and preferences, which are stored
 # Real conversion, encryption, cancellation, and file-safety checks:
 ./scripts/test.sh
 
-# Print layout, rasterization, collation, and printer-option checks; prints no paper:
+# Print layout, queue sequencing, Finder service, and simulated printer checks; prints no paper:
 ./scripts/test-print.sh
 
 # XCTest suite (requires full Xcode selected and licensed):
 swift test
 ```
 
-`scripts/test.sh` requires LibreOffice in `/Applications` or `~/Applications`. `scripts/test-print.sh` does not need LibreOffice; it uses Swift, Python 3, and the built-in macOS printing tools. Both scripts work with Command Line Tools alone and generate fixtures under ignored `work/`. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer.
+`scripts/test.sh` requires LibreOffice in `/Applications` or `~/Applications`. `scripts/test-print.sh` does not need LibreOffice; it uses Swift, Python 3, and the built-in macOS printing tools. Both scripts work with Command Line Tools alone and generate fixtures under ignored `work/`. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer. Queue checks exercise real composition with a mock submission handler, serialized imports, independent group settings, per-file copy counts, sequential uploads, partial failures, uncertain jobs, stopping, and Finder pasteboards.
 
 `swift test` additionally requires full Xcode selected and licensed; Command Line Tools alone may report a missing XCTest module. Conversion XCTest cases skip when LibreOffice is absent. Do not change the selected developer directory just to run the standalone scripts.
 

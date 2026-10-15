@@ -54,6 +54,12 @@ struct PrintPreviewChecks {
         model.clear()
         try await Task.sleep(nanoseconds: 350_000_000)
         try check(model.previewData == nil && model.selectedPreviewID == nil && !model.previewLoading, "clearing a batch cancels pending previews without restoring stale data")
+        model.inputs = inputs
+        model.setPreviewVisible(true)
+        model.setPreviewVisible(false)
+        model.template.orientation = .landscape
+        _ = try await waitForPreview(model)
+        try check(model.previewData != nil, "closing one of two preview surfaces keeps the other preview live")
         model.setPreviewVisible(false)
         print("All preview state checks passed. No print jobs submitted.")
     }

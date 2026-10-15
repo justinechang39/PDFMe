@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0
+
+- Add a resizable Print Queue companion window, accessible from the menu bar, Dock, and Command-1.
+- Add Finder’s “Add to PDFMe Print Queue” service for one or multiple PDFs; open the queue for review without printing.
+- Organize PDFs into independent template groups with per-document copies, drag handles to reorder or move between groups, and a live sheet preview.
+- Share the primary group with the mini app. Keep template management and direct/macOS transport preferences synchronized.
+- Submit groups sequentially, clear accepted files, stop on failures, and allow stopping after the current group. Unknown submission outcomes require review before retrying.
+- Preserve the menu bar app when the window closes. Retain unsent groups for the session; saved templates persist as before.
+- Extend offline checks for Finder service selection, group ownership, submission order, copy counts, partial failures, and duplicate prevention. GitHub Actions remains disabled.
+
 ## 1.4.0
 
 - Add optional Direct PDF printing over IPP/IPPS using native macOS networking, with no new installed dependencies.

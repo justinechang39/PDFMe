@@ -11,8 +11,9 @@ private let paper = Color(red: 0.97, green: 0.96, blue: 0.93)
 struct ContentView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var printing: PrintModel
+    @ObservedObject var queue: PrintQueueModel
     @State private var printTargeted = false
-    init(model: AppModel) { self.model = model; self.printing = model.printing }
+    init(model: AppModel) { self.model = model; self.printing = model.printing; self.queue = model.printQueue }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var targeted = false
     @State private var hovering = false
@@ -23,7 +24,7 @@ struct ContentView: View {
             if model.printingMode {
                 HStack(spacing: 0) {
                     ScrollView {
-                        PrintReviewView(model: printing).padding(24)
+                        PrintReviewView(model: printing).padding(24).disabled(queue.isPrinting)
                     }.scrollIndicators(.hidden).frame(width: 420)
                     Divider()
                     PrintPreviewView(model: printing)
@@ -35,6 +36,13 @@ struct ContentView: View {
                         else {
                             dropZone
                             printDropZone
+                            Button { model.openPrintWindow?() } label: {
+                                HStack {
+                                    Label("Open Print Queue", systemImage: "macwindow")
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                }.font(.system(size: 12)).padding(.horizontal, 4)
+                            }.buttonStyle(.plain)
                             if !model.engineReady { engineNotice }
                             if let message = model.message { banner(message) }
                             if !model.jobs.isEmpty { results }
@@ -43,7 +51,7 @@ struct ContentView: View {
                     }.padding(24)
                 }.scrollIndicators(.hidden)
             }
-            if model.printingMode { PrintActionBar(model: printing) } else { footer }
+            if model.printingMode { PrintActionBar(model: printing).disabled(queue.isPrinting) } else { footer }
         }
         .frame(width: model.panelSize.width, height: model.panelSize.height)
         .background(paper)
@@ -66,6 +74,8 @@ struct ContentView: View {
                 .frame(width: 36, height: 36).background(moss.opacity(0.09), in: RoundedRectangle(cornerRadius: 11))
             Text(model.printingMode ? "Print PDF" : "PDFMe").font(.system(size: 20, weight: .semibold, design: .rounded))
             Spacer()
+            Button { model.openPrintWindow?() } label: { Image(systemName: "macwindow") }
+                .buttonStyle(ToolbarIconButtonStyle()).help("Open Print Queue window").accessibilityLabel("Open Print Queue window")
             Button { withAnimation { if model.printingMode { printing.showTemplateEditor.toggle() } else { model.settings.toggle() } } } label: {
                 Image(systemName: model.settings ? "xmark" : "slider.horizontal.3")
             }.buttonStyle(ToolbarIconButtonStyle()).help(model.settings ? "Back to converter" : "Settings")
@@ -282,16 +292,7 @@ struct ContentView: View {
                 Button("About PDFMe") { model.settings = true }
                 Link("Source code", destination: URL(string: "https://github.com/justinechang39/PDFMe")!)
                 Divider()
-                Button(model.busy || printing.busy ? "Stop work & quit" : "Quit PDFMe") {
-                    model.cancel()
-                    printing.cancelPreparation()
-                    Task {
-                        if let current = model.task { await current.value }
-                        if let current = printing.operation { await current.value }
-                        printing.cleanup()
-                        NSApp.terminate(nil)
-                    }
-                }.keyboardShortcut("q")
+                Button("Quit PDFMe") { NSApp.terminate(nil) }.keyboardShortcut("q")
             } label: { Image(systemName: "ellipsis").font(.system(size: 15)).frame(width: 24) }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("More options")
         }.foregroundStyle(moss).padding(.horizontal, 24).padding(.vertical, 14)
