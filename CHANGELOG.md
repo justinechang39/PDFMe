@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1
+
+- Add a sandboxed Finder extension that provides “Add to PDFMe Print Queue” directly in the contextual menu for PDF-only selections.
+- Hand selected files to the containing app through Launch Services, opening the existing review workflow without printing.
+- Add Finder extension status and a Manage Finder Extension button in Settings. Keep the Services fallback for locations where Finder extension menus are unavailable.
+- Build and sign the embedded extension locally with Command Line Tools; add offline menu-selection and routing checks.
+
 ## 1.5.0
 
 - Add a resizable Print Queue companion window, accessible from the menu bar, Dock, and Command-1.

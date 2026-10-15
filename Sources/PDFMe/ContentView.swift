@@ -241,6 +241,13 @@ struct ContentView: View {
             Text("Settings").font(.system(size: 30, design: .serif))
             DirectPrintSettingView(model: model.printing)
             VStack(alignment: .leading, spacing: 8) {
+                Label("Finder menu", systemImage: "cursorarrow.click").font(.system(size: 13, weight: .medium))
+                Text(model.finderExtensionEnabled ? "PDFMe’s Finder extension is enabled." : "Enable PDFMe to add Print Queue directly to Finder’s right-click menu.")
+                    .font(.system(size: 11)).foregroundStyle(muted)
+                Button("Manage Finder Extension", action: model.manageFinderExtension).controlSize(.small)
+            }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 8) {
                 Toggle("Start at login", isOn: Binding(get: { model.startsAtLogin }, set: model.setStartAtLogin))
                     .toggleStyle(.switch).controlSize(.small).font(.system(size: 12))
                 Text("Open PDFMe when you sign in to your Mac.")

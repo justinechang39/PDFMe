@@ -11,7 +11,7 @@
 
 - **Drop onto the menu bar icon** or the **Create PDF** panel. Click to browse, or use Finder’s **Open With → PDFMe**.
 - **Desktop print queue:** group PDFs by template, adjust settings per group, preview each document, and send groups in order with per-file copies.
-- **Finder shortcut:** select PDFs, right-click → **Services → Add to PDFMe Print Queue**. Review before printing.
+- **Finder shortcut:** enable PDFMe’s Finder extension for **Add to PDFMe Print Queue** directly in the right-click menu. The Services action remains available as a fallback.
 - **Separate workflows:** DOCX only for Create PDF; PDF only for Print PDF. The menu bar icon routes a single-format batch to the appropriate workflow.
 - **Saved beside the original** by default. Turn on **Ask every time** to choose a location for each document.
 - **Small, Balanced, or Best** image quality. Text stays sharp and selectable.
@@ -50,7 +50,7 @@ After successful submission, the PDF list and its copy counts are cleared, disab
 
 Choose **Open Print Queue** (or the window icon) in the menu bar panel. The resizable window also appears in the Dock while open. Closing it leaves PDFMe in the menu bar; **Mini app** returns to the small panel. The first queue group shares the mini app’s documents and settings, so switching views does not duplicate files.
 
-In Finder, select one or more PDFs and choose **Services → Add to PDFMe Print Queue** from the right-click menu. PDFMe launches if needed, opens its queue window, and adds the files to the selected group. **Open With → PDFMe** also opens PDFs in the queue. Neither action prints automatically. The Finder service advertises PDF support only and rejects mixed selections; unreadable, locked, or print-prohibited PDFs are reported in the app.
+In Finder, select one or more PDFs and choose **Add to PDFMe Print Queue** directly from the right-click menu when the Finder extension is enabled. The same action remains under **Services** as a fallback. PDFMe launches if needed, opens its queue window, and adds the files to the selected group. **Open With → PDFMe** also opens PDFs in the queue. Neither action prints automatically. The Finder service advertises PDF support only and rejects mixed selections; unreadable, locked, or print-prohibited PDFs are reported in the app.
 
 1. Use **Add group** to create a group from a saved template.
 2. Drop PDFs on a group, or select it and choose **Add PDFs**.
@@ -63,7 +63,13 @@ In Finder, select one or more PDFs and choose **Services → Add to PDFMe Print 
 
 The direct-printing toggle applies to all groups. Files, copy counts, group adjustments, and job receipts are in memory for this app session only. Closing/reopening the window keeps unsent work; quitting clears it. Saved templates persist separately. No queued work prints on launch.
 
-If the Finder service does not appear after installing, launch PDFMe once and check **System Settings → Keyboard → Keyboard Shortcuts → Services → Files and Folders** for **Add to PDFMe Print Queue**. You can also use Open With or drag files into the queue.
+To enable the top-level menu action, open PDFMe’s **Settings → Finder menu → Manage Finder Extension** and enable **PDFMe** in macOS. The app uses Apple’s extension management interface, so macOS chooses the appropriate settings page. Finder controls final placement and availability; cloud-managed folders may suppress Finder extension items. Use the Services action, Open With, or drag-and-drop in those locations.
+
+If the Services fallback does not appear after installing, launch PDFMe once and check **System Settings → Keyboard → Keyboard Shortcuts → Services → Files and Folders** for **Add to PDFMe Print Queue**.
+
+The Finder extension is a small, sandboxed component. It receives selection/menu callbacks and hands the selected PDF URLs to its containing app through Launch Services. It does not scan folders, read PDF contents, print, or connect to the network. The main app checks the actual PDFs and opens the queue for review. It registers `/` as its Finder menu scope so local folders and mounted volumes can participate; this is not a filesystem access grant.
+
+Implementation uses Apple’s [Finder Sync contextual menu API](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/Finder.html). Finder Sync was designed primarily for sync clients; PDFMe uses only its optional menu surface and retains the standard Services route where that surface is unavailable.
 
 ### Direct PDF printing
 
@@ -158,7 +164,7 @@ cd PDFMe
 /usr/bin/codesign --verify --deep --strict --verbose=2 dist/PDFMe.app
 ```
 
-The script makes `dist/PDFMe.app` and `dist/PDFMe-macOS-$(uname -m).zip` for the current Mac’s architecture, then ad-hoc signs the app. Set `CODE_SIGN_IDENTITY` to your own signing identity if you maintain a distribution build. Developer ID signing, hardened runtime, and notarization are release-maintainer responsibilities and are not configured by this script.
+The script also compiles and embeds `PDFMeFinder.appex` using the macOS SDK, signs the sandboxed extension first and then the containing app. It makes `dist/PDFMe.app` and `dist/PDFMe-macOS-$(uname -m).zip` for the current Mac’s architecture, then ad-hoc signs the app. Set `CODE_SIGN_IDENTITY` to your own signing identity if you maintain a distribution build. Developer ID signing, hardened runtime, and notarization are release-maintainer responsibilities and are not configured by this script.
 
 ### Install a local build
 
@@ -172,7 +178,7 @@ If PDFMe is running, choose **Quit PDFMe** from its panel before replacing the a
 open /Applications/PDFMe.app
 ```
 
-Replacing the bundle preserves saved templates and preferences, which are stored separately. The status command only reads the printing preference; it does not start the UI or send a print job. The copy, signature, status, and Launch Services registration commands have been verified locally. PDFMe registers its Finder service when it launches. Opening the installed app shows its icon in the menu bar. Use **Settings → Start at login** if desired, and allow local-network access if macOS asks when using direct printing.
+Replacing the bundle preserves saved templates and preferences, which are stored separately. The status command only reads the printing preference; it does not start the UI or send a print job. The copy, signature, status, and Launch Services registration commands have been verified locally. PDFMe registers its Finder service when it launches. After installing a build with the Finder extension, enable PDFMe through its **Manage Finder Extension** button; registering the app alone does not establish that Finder has enabled or loaded the extension. Opening the installed app shows its icon in the menu bar. Use **Settings → Start at login** if desired, and allow local-network access if macOS asks when using direct printing.
 
 ### Test locally
 
@@ -182,6 +188,9 @@ Replacing the bundle preserves saved templates and preferences, which are stored
 
 # Print layout, queue sequencing, Finder service, and simulated printer checks; prints no paper:
 ./scripts/test-print.sh
+
+# Finder extension menu selection and bundle-routing checks; opens no files:
+./scripts/test-finder.sh
 
 # XCTest suite (requires full Xcode selected and licensed):
 swift test

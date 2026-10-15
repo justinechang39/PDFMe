@@ -101,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             showPopover()
         }
     }
-    func applicationDidBecomeActive(_ notification: Notification) { model.refreshLoginItem() }
+    func applicationDidBecomeActive(_ notification: Notification) { model.refreshLoginItem(); model.refreshFinderExtension() }
     func applicationWillTerminate(_ notification: Notification) { model.printQueue.cleanup() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard model.busy || model.printQueue.occupied else { return .terminateNow }
@@ -169,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         guard let button = statusItem?.button else { return }
         model.refreshEngine()
         model.refreshLoginItem()
+        model.refreshFinderExtension()
         if !popover.isShown { popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY) }
         NSApp.activate(ignoringOtherApps: true)
         popover.contentViewController?.view.window?.makeKey()

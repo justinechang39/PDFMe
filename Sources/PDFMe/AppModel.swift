@@ -4,6 +4,7 @@ import UserNotifications
 import UniformTypeIdentifiers
 import PDFMeCore
 import ServiceManagement
+import FinderSync
 
 struct ConversionJob: Identifiable {
     let id = UUID()
@@ -16,6 +17,10 @@ struct ConversionJob: Identifiable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    @Published private(set) var finderExtensionEnabled = FIFinderSyncController.isExtensionEnabled
+    func refreshFinderExtension() { finderExtensionEnabled = FIFinderSyncController.isExtensionEnabled }
+    func manageFinderExtension() { FIFinderSyncController.showExtensionManagementInterface() }
+
     @Published private(set) var loginItemStatus = LoginItem.status
     @Published private(set) var loginItemError: String?
     var startsAtLogin: Bool { loginItemStatus == .enabled || loginItemStatus == .requiresApproval }
