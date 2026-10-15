@@ -29,20 +29,16 @@ struct FinderExtensionChecks {
         let directory = root.appendingPathComponent("Folder.pdf", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         check(!FinderSelection.accepts([URL(fileURLWithPath: directory.path, isDirectory: false)]), "folders with a PDF suffix rejected")
-        let app = URL(fileURLWithPath: "/Applications/PDFMe.app")
-        check(FinderSelection.containingApp(for: app.appendingPathComponent("Contents/PlugIns/PDFMeFinder.appex")) == app, "delivery targets this extension’s containing app")
-        check(FinderSelection.containingApp(for: root.appendingPathComponent("PDFMeFinder.appex")) == nil, "unexpected bundle layouts do not target arbitrary apps")
         let finder = PDFMeFinderSync(monitorFolders: false)
-        finder.extensionURL = app.appendingPathComponent("Contents/PlugIns/PDFMeFinder.appex")
         var selection = files
         finder.selectedURLs = { selection }
-        var opened: [URL] = []; var destination: URL?; var failures: [String] = []
-        finder.openDocuments = { urls, app, completion in opened = urls; destination = app; completion(nil) }
+        var opened: [URL] = []; var failures: [String] = []
+        finder.sendToService = { urls in opened = urls; return true }
         finder.reportError = { failures.append($0) }
         // Reproduce Finder's reconstructed sender: title and selector, no representedObject.
         let sender = NSMenuItem(title: "Add to PDFMe Print Queue", action: NSSelectorFromString("addToQueue:"), keyEquivalent: "")
         _ = finder.perform(sender.action!, with: sender)
-        check(opened == files && destination == app && failures.isEmpty, "actual Finder action hands off multiple PDFs when sender metadata is absent")
+        check(opened == files && failures.isEmpty, "actual Finder action hands off multiple PDFs when sender metadata is absent")
         selection = [files[1]]; opened = []
         sender.representedObject = [root.appendingPathComponent("stale.pdf")]
         _ = finder.perform(sender.action!, with: sender)
@@ -51,9 +47,9 @@ struct FinderExtensionChecks {
         _ = finder.perform(sender.action!, with: sender)
         check(opened.isEmpty && failures.count == 1, "missing selection reports an error instead of silently returning")
         selection = files
-        finder.openDocuments = { _, _, completion in completion(NSError(domain: "Synthetic", code: 1, userInfo: [NSLocalizedDescriptionKey: "Synthetic handoff failure"])) }
+        finder.sendToService = { _ in false }
         _ = finder.perform(sender.action!, with: sender)
-        check(failures.last == "Synthetic handoff failure", "Launch Services failures are surfaced without retrying")
+        check(failures.last?.contains("print service") == true, "service failures are surfaced without retrying")
         print("All Finder extension checks passed. No apps opened and no jobs submitted.")
     }
 }

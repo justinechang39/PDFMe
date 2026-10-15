@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3
+
+- Fix the permission error when the top-level Finder action tries to open selected PDFs from its sandbox. Route selected paths through PDFMe’s existing macOS Service using a named pasteboard; the main app validates and opens them with its own permissions.
+- Keep the top-level menu action and current queue; no added file-access entitlements or automatic printing.
+- Add a real signed-sandbox integration test with an isolated service receiver. Verify that the sender cannot read the synthetic PDFs while the receiver gets and reads both files correctly.
+
 ## 1.5.2
 
 - Fix the top-level Finder action silently returning when Finder reconstructs its menu item without custom metadata. Read the current file selection from the Finder controller inside the action.

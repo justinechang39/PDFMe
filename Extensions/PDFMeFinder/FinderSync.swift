@@ -8,12 +8,7 @@ final class PDFMeFinderSync: FIFinderSync {
     // Injectable boundaries let checks invoke the actual Objective-C menu action
     // with a reconstructed sender, without opening documents or using Finder UI.
     var selectedURLs: () -> [URL] = { FIFinderSyncController.default().selectedItemURLs() ?? [] }
-    var extensionURL = Bundle.main.bundleURL
-    var openDocuments: ([URL], URL, @escaping (Error?) -> Void) -> Void = { urls, app, completion in
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: configuration) { _, error in completion(error) }
-    }
+    var sendToService: ([URL]) -> Bool = { FinderServiceHandoff.send($0) }
     var reportError: (String) -> Void = { message in
         DispatchQueue.main.async {
             let alert = NSAlert()
@@ -56,19 +51,11 @@ final class PDFMeFinderSync: FIFinderSync {
             reportError("Select one or more PDF files in Finder and try again.")
             return
         }
-        guard let app = FinderSelection.containingApp(for: extensionURL) else {
-            Self.logger.error("Could not resolve containing app")
-            reportError("PDFMe’s Finder extension is not inside its app. Reinstall PDFMe in Applications.")
-            return
-        }
-        let report = reportError
-        openDocuments(urls, app) { error in
-            if let error {
-                Self.logger.error("Launch Services handoff failed: \(error.localizedDescription, privacy: .private)")
-                report(error.localizedDescription)
-            } else {
-                Self.logger.notice("Launch Services accepted the PDF queue handoff")
-            }
+        if sendToService(urls) {
+            Self.logger.notice("PDFMe print service accepted the queue handoff")
+        } else {
+            Self.logger.error("PDFMe print service did not accept the handoff")
+            reportError("Couldn’t reach PDFMe’s print service. Open PDFMe and try again, or use Services → Add to PDFMe Print Queue.")
         }
     }
 }

@@ -67,7 +67,7 @@ To enable the top-level menu action, open PDFMe’s **Settings → Finder menu �
 
 If the Services fallback does not appear after installing, launch PDFMe once and check **System Settings → Keyboard → Keyboard Shortcuts → Services → Files and Folders** for **Add to PDFMe Print Queue**.
 
-The Finder extension is a small, sandboxed component. It receives selection/menu callbacks and hands the selected PDF URLs to its containing app through Launch Services. It does not scan folders, read PDF contents, print, or connect to the network. The main app checks the actual PDFs and opens the queue for review. It registers `/` as its Finder menu scope so local folders and mounted volumes can participate; this is not a filesystem access grant.
+The Finder extension is a small, sandboxed component. It receives selection/menu callbacks and sends the selected PDF paths through a private, named pasteboard to PDFMe’s existing macOS Service. This avoids asking the sandboxed extension to open files it cannot access; the app validates and reads the PDFs under its own permissions. It does not scan folders, read PDF contents, print, or connect to the network. The main app checks the actual PDFs and opens the queue for review. It registers `/` as its Finder menu scope so local folders and mounted volumes can participate; this is not a filesystem access grant.
 
 Implementation uses Apple’s [Finder Sync contextual menu API](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/Finder.html). Finder Sync was designed primarily for sync clients; PDFMe uses only its optional menu surface and retains the standard Services route where that surface is unavailable.
 
@@ -189,14 +189,19 @@ Replacing the bundle preserves saved templates and preferences, which are stored
 # Print layout, queue sequencing, Finder service, and simulated printer checks; prints no paper:
 ./scripts/test-print.sh
 
-# Finder extension menu selection and bundle-routing checks; opens no files:
+# Finder extension menu selection and action checks; opens no files:
 ./scripts/test-finder.sh
+
+# Real sandbox-to-Service transfer, using isolated synthetic PDFs and a test app:
+python3 scripts/test-finder-sandbox.py
 
 # XCTest suite (requires full Xcode selected and licensed):
 swift test
 ```
 
 `scripts/test.sh` requires LibreOffice in `/Applications` or `~/Applications`. `scripts/test-print.sh` does not need LibreOffice; it uses Swift, Python 3, and the built-in macOS printing tools. Both scripts work with Command Line Tools alone and generate fixtures under ignored `work/`. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer. Queue checks exercise real composition with a mock submission handler, serialized imports, independent group settings, per-file copy counts, sequential uploads, partial failures, uncertain jobs, stopping, and Finder pasteboards.
+
+`test-finder-sandbox.py` temporarily registers a separate receiver app in `~/Applications`, then removes it. It uses the production handoff and service parser with the extension’s actual sandbox entitlements. It verifies that the sender cannot read the PDFs, but the receiver gets both paths in order and can open the documents. The test does not contact PDFMe’s queue or a printer. Generated test fixtures remain under ignored `work/`.
 
 `swift test` additionally requires full Xcode selected and licensed; Command Line Tools alone may report a missing XCTest module. Conversion XCTest cases skip when LibreOffice is absent. Do not change the selected developer directory just to run the standalone scripts.
 

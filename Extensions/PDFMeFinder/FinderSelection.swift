@@ -8,12 +8,4 @@ enum FinderSelection {
                 && (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
         }
     }
-    static func containingApp(for extensionURL: URL) -> URL? {
-        let plugins = extensionURL.deletingLastPathComponent()
-        let contents = plugins.deletingLastPathComponent()
-        let app = contents.deletingLastPathComponent()
-        guard extensionURL.pathExtension == "appex", plugins.lastPathComponent == "PlugIns",
-              contents.lastPathComponent == "Contents", app.pathExtension == "app" else { return nil }
-        return app
-    }
 }

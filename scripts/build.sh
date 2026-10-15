@@ -16,7 +16,7 @@ mkdir -p "$extension/Contents/MacOS"
 # no Xcode project, package dependency, or paid signing identity is needed locally.
 swiftc -parse-as-library -application-extension -O -module-name PDFMeFinder \
   -target "$(uname -m)-apple-macosx13.0" \
-  Extensions/PDFMeFinder/FinderSelection.swift Extensions/PDFMeFinder/FinderSync.swift \
+  Extensions/PDFMeFinder/FinderSelection.swift Extensions/PDFMeFinder/FinderServiceHandoff.swift Extensions/PDFMeFinder/FinderSync.swift \
   -framework AppKit -framework FinderSync -Xlinker -e -Xlinker _NSExtensionMain \
   -o "$extension/Contents/MacOS/PDFMeFinder"
 cp Extensions/PDFMeFinder/Info.plist "$extension/Contents/Info.plist"
