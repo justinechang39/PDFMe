@@ -2,6 +2,7 @@
 
 PDFMe’s source code and original artwork are MIT licensed (see LICENSE).
 
+- **Sparkle 2.10.0** is bundled for signed application updates. Sparkle and its bundled components have MIT, BSD, and other permissive licenses; the complete upstream notices are included in the app at `Contents/Resources/Sparkle-LICENSE.txt`. Source: https://github.com/sparkle-project/Sparkle/tree/2.10.0.
 - **LibreOffice** is a separately installed application, not bundled with PDFMe. It is developed by The Document Foundation and contributors, and distributed under its own licenses, principally the Mozilla Public License 2.0. See https://www.libreoffice.org/about-us/licenses/ and the installed LibreOffice distribution for its license and third-party notices. PDFMe is not affiliated with or endorsed by The Document Foundation.
 - **Swift, SwiftUI, AppKit, PDFKit, and UserNotifications** are platform tools/frameworks used subject to their respective licenses. System frameworks and SF Symbols are not redistributed as standalone assets by this repository.
 - **Microsoft Word** and **DOCX** are referenced for file-format compatibility only. PDFMe is not affiliated with or endorsed by Microsoft.

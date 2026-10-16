@@ -4,3 +4,5 @@
 dist/
 work/
 *.xcodeproj/
+
+__pycache__/

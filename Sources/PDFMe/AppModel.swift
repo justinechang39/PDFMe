@@ -17,6 +17,8 @@ struct ConversionJob: Identifiable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    let updates = AppUpdater()
+
     @Published private(set) var finderExtensionEnabled = FIFinderSyncController.isExtensionEnabled
     func refreshFinderExtension() { finderExtensionEnabled = FIFinderSyncController.isExtensionEnabled }
     func manageFinderExtension() { FIFinderSyncController.showExtensionManagementInterface() }

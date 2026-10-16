@@ -79,6 +79,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
         NSApp.servicesProvider = finderService
         NSUpdateDynamicServices()
+        model.updates.hasUnfinishedWork = { [weak self] in
+            guard let self else { return true }
+            return self.model.busy || self.model.printQueue.occupied || self.model.printQueue.documentCount > 0
+        }
+        model.updates.start()
         installMenu()
         model.show = { [weak self] in self?.showPopover() }
         model.printing.show = { [weak self] in
@@ -104,10 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     func applicationDidBecomeActive(_ notification: Notification) { model.refreshLoginItem(); model.refreshFinderExtension() }
     func applicationWillTerminate(_ notification: Notification) { model.printQueue.cleanup() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard model.busy || model.printQueue.occupied else { return .terminateNow }
+        guard model.busy || model.printQueue.occupied || (model.updates.isInstalling && model.printQueue.documentCount > 0) else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Work is still in progress"
-        alert.informativeText = "Wait for the current operation to finish. To stop a multi-group batch, use Stop after this group in the Print Queue."
+        alert.informativeText = "Finish or clear queued work before updating. To stop a multi-group batch, use Stop after this group in the Print Queue."
         alert.addButton(withTitle: "Keep PDFMe open")
         alert.runModal()
         return .terminateCancel
@@ -141,6 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let menu = NSMenu()
         let appItem = NSMenuItem(); let appMenu = NSMenu(title: "PDFMe")
         appMenu.addItem(withTitle: "About PDFMe", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(AppUpdater.checkForUpdates), keyEquivalent: "")
+        updateItem.target = model.updates; appMenu.addItem(updateItem)
         appMenu.addItem(.separator())
         let services = NSMenu(); let serviceItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         serviceItem.submenu = services; appMenu.addItem(serviceItem); NSApp.servicesMenu = services

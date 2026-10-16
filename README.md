@@ -26,13 +26,23 @@
 Requires **macOS 13 or later**. DOCX conversion additionally requires [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/) in `/Applications` or `~/Applications`. PDF printing needs an installed printer; LibreOffice is not needed. Direct printing uses macOS networking and an IPP printer that accepts PDF, with no additional installation.
 
 1. For DOCX conversion, install LibreOffice (or run `brew install --cask libreoffice`). Printing PDFs does not require LibreOffice.
-2. Download the ZIP matching your Mac from [Releases](https://github.com/justinechang39/PDFMe/releases). `arm64` is for Apple silicon; `x86_64` is for Intel when available.
+2. Download **PDFMe-macOS-universal.zip** from the [latest release](https://github.com/justinechang39/PDFMe/releases/latest). It runs on Apple silicon and Intel Macs.
 3. Unzip and move **PDFMe.app** into Applications.
 4. Open PDFMe. Its document icon appears in the menu bar. Drop a `.docx` file on it.
 
 The initial community build is **ad-hoc signed, not Apple-notarized**. macOS may block a downloaded copy. After trying to open it, use **System Settings → Privacy & Security → Open Anyway** if you trust the release, or build from source. Do not disable Gatekeeper globally. To open PDFMe automatically when you sign in, enable **Settings → Start at login**. The toggle uses macOS Login Items and reflects changes made in System Settings. If macOS requires approval, PDFMe shows an **Open Login Items** button. Login launches stay in the menu bar without opening the panel.
 
 Allow notifications when macOS asks if you want completion banners. Results also appear inside PDFMe regardless of notification permission. Documents from iCloud or another cloud drive must be downloaded before conversion.
+
+## Updates
+
+PDFMe 1.6.0 and later include [Sparkle](https://sparkle-project.org/). Install this version manually once; older versions cannot discover updates. **Automatic updates** is enabled by default and can be disabled in PDFMe’s Settings. **Check for Updates…** is also available in Settings and the application menu.
+
+PDFMe checks GitHub for published releases, downloads updates in the background, and can install them when the app quits. An immediate update restart is blocked while converting, printing, importing, or holding unsent PDFs. Finish or clear the queue, then check again if an update was postponed. Existing preferences and saved templates are stored outside the application bundle and survive replacement. Updating does not print queued documents.
+
+Both the update feed and download are verified with Ed25519 signatures; archives are verified before extraction. Private signing keys stay in the maintainer’s Keychain. Updates do not pull or compile source code. GitHub Actions stays disabled: releases are compiled locally and uploaded as finished downloads. Update checks contact GitHub (and its download CDN), but send no documents or Sparkle system profile. Normal network metadata such as IP address and app version remains visible to the hosting service.
+
+The app is currently ad-hoc signed, not Apple-notarized. Sparkle signatures verify update authenticity; they do not replace Apple Developer ID signing or remove the first-install macOS approval described above.
 
 ## Print PDF
 
@@ -148,7 +158,7 @@ Recent results are in memory only and disappear when PDFMe quits. Quality, prote
 
 Builds run locally. GitHub Actions is disabled for this repository and the build workflow has been removed; pushes and pull requests do not start GitHub builds. Releases can be built and uploaded manually.
 
-Requires macOS 13 or later and Apple Command Line Tools. The commands below were verified on Apple silicon with Swift 6.2, Python 3.11.6, and LibreOffice 26.2.3.2. No third-party Swift packages are required. Install Command Line Tools with `xcode-select --install` if needed, then verify the selected tools:
+Requires macOS 13 or later and Apple Command Line Tools. The commands below were verified on Apple silicon with Swift 6.2, Python 3.11.6, and LibreOffice 26.2.3.2. Swift Package Manager downloads the pinned Sparkle 2.10.0 binary package and verifies its checksum; the resolved dependency is committed. An internet connection is required on the first build. Install Command Line Tools with `xcode-select --install` if needed, then verify the selected tools:
 
 ```sh
 xcode-select -p
@@ -164,7 +174,17 @@ cd PDFMe
 /usr/bin/codesign --verify --deep --strict --verbose=2 dist/PDFMe.app
 ```
 
-The script also compiles and embeds `PDFMeFinder.appex` using the macOS SDK, signs the sandboxed extension first and then the containing app. It makes `dist/PDFMe.app` and `dist/PDFMe-macOS-$(uname -m).zip` for the current Mac’s architecture, then ad-hoc signs the app. Set `CODE_SIGN_IDENTITY` to your own signing identity if you maintain a distribution build. Developer ID signing, hardened runtime, and notarization are release-maintainer responsibilities and are not configured by this script.
+The script compiles and embeds `PDFMeFinder.appex` and Sparkle, preserving framework symlinks and signing nested components before the containing app. It makes `dist/PDFMe.app` and `dist/PDFMe-macOS-$(uname -m).zip` for the current Mac’s architecture, then ad-hoc signs the app. Use `PDFME_ARCHS="arm64 x86_64" ./scripts/build.sh` to make the universal release ZIP. Set `CODE_SIGN_IDENTITY` to your own signing identity if you maintain a distribution build. Developer ID signing, hardened runtime, and notarization are release-maintainer responsibilities and are not configured by this script.
+
+### Publish a locally built release
+
+Release maintainers need `gh` authenticated for this repository and the signing key in their login Keychain under the Sparkle account `io.github.justinechang39.PDFMe`. Preserve a secure backup of that key; losing it can prevent existing installations from accepting future updates. Do not export it into this repository or publish it. Forks must generate their own key, replace `SUPublicEDKey`/`SUFeedURL`, and use their own release repository and signing account.
+
+1. Increment the app and Finder extension version/build numbers together. Add release notes, run the local checks, and commit to `main`.
+2. Run `./scripts/release.py prepare --notes path/to/release-notes.md`. This builds both architectures locally, checks that the Keychain public key matches the app, signs the archive/feed with Sparkle, and writes checksums plus the source commit under ignored `dist/releases/vVERSION/`.
+3. Push `main`, then run `./scripts/release.py publish`. It requires a clean checkout, unchanged artifacts, the matching remote commit, and disabled GitHub Actions. It uploads all assets to a draft release before publishing it as latest. It does not run any workflow.
+
+The app checks `https://github.com/justinechang39/PDFMe/releases/latest/download/appcast.xml`; each signed feed points to its version-specific ZIP. Publish new versioned releases; do not replace existing release assets. Source-code ZIPs generated by GitHub are not installers.
 
 ### Install a local build
 
@@ -179,6 +199,10 @@ open /Applications/PDFMe.app
 ```
 
 Replacing the bundle preserves saved templates and preferences, which are stored separately. The status command only reads the printing preference; it does not start the UI or send a print job. The copy, signature, status, and Launch Services registration commands have been verified locally. PDFMe registers its Finder service when it launches. After installing a build with the Finder extension, enable PDFMe through its **Manage Finder Extension** button; registering the app alone does not establish that Finder has enabled or loaded the extension. Opening the installed app shows its icon in the menu bar. Use **Settings → Start at login** if desired, and allow local-network access if macOS asks when using direct printing.
+
+### Test the updater (release maintainer)
+
+After building, run `python3 scripts/test-updates.py`. It requires the release-signing key in Keychain and may prompt locally for access by `generate_appcast` or `sign_update`. It checks the actual app updater configuration and work-protection delegates, then serves signed test updates over loopback to isolated dummy applications. It verifies successful installation and rejection of a modified archive or feed. It never updates the installed PDFMe or sends a print job. Logs/fixtures stay in ignored `work/`.
 
 ### Test locally
 
