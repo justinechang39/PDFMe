@@ -2,6 +2,36 @@ import AppKit
 import PDFKit
 import PDFMeCore
 
+/// Behaves like a printer that briefly stops accepting work after the first upload.
+actor GroupIPPPrinter {
+    var uploads = 0
+    var waitingChecks = 0
+    var operations: [UInt16] = []
+    var pause = true
+    func resume() { pause = false }
+    func send(_ uri: URL, _ body: Data, _ file: URL?) throws -> Data {
+        let request = try IPPCodec.decode(body)
+        operations.append(request.code)
+        var attributes: [IPPAttribute] = []
+        if request.code == 11 {
+            let waiting = uploads == 1 && pause
+            if waiting { waitingChecks += 1 }
+            attributes = [.text("document-format-supported", ["application/pdf"]),
+                .init(tag: 0x23, name: "operations-supported", values: [4, 5, 6, 8].map { IPPAttribute.integer("", $0).values[0] }),
+                .text("media-supported", PrintPaper.allCases.map(\.ippMedia)),
+                .text("sides-supported", PrintDuplex.allCases.map(\.cupsValue)),
+                .text("print-color-mode-supported", ["color", "monochrome"]),
+                .boolean("printer-is-accepting-jobs", !waiting),
+                .integer("printer-state", waiting ? 5 : 4, tag: 0x23)]
+        } else if request.code == 5 { attributes = [.integer("job-id", uploads + 1)] }
+        else if request.code == 6 {
+            precondition(file != nil && request.integers("job-id") == [uploads + 1])
+            uploads += 1
+        } else { precondition(request.code == 4) }
+        return try IPPCodec.encode(code: 0, requestID: request.requestID, groups: [(request.code == 11 ? 4 : 2, attributes)])
+    }
+}
+
 @main
 struct PrintQueueChecks {
     static func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
@@ -104,6 +134,62 @@ struct PrintQueueChecks {
         queue.printAll(); await queue.operation?.value
         try check(!submitted && !primary.inputs.isEmpty && !primary.requiresSubmissionReview, "preparation failure retains documents and never contacts a printer")
         primary.clear()
+
+        // A direct-printer preflight refusal has sent no document, so retry is safe.
+        primary.inputs = [inputs[0]]
+        primary.submitPrepared = { file, template, _ in
+            let client = try IPPClient(uri: URL(string: "ipp://localhost/ipp/print")!, sender: { _, data, file in
+                let request = try IPPCodec.decode(data)
+                precondition(request.code == 11 && file == nil)
+                return try IPPCodec.encode(code: 0x040B, requestID: request.requestID,
+                    groups: [(1, [.text("status-message", ["Synthetic preflight refusal"])])])
+            })
+            return try await DirectPrinterService.submit(file: file, template: template,
+                printer: Printer(id: "", name: "Mock"), client: client)
+        }
+        queue.printAll(); await queue.operation?.value
+        try check(primary.lastAttempt == .failed && !primary.requiresSubmissionReview && primary.inputs.count == 1,
+                  "direct preflight failure retains unsent files without an Allow retry gate")
+        primary.clear()
+
+        // Exercise real direct submission across groups, not just a successful mock callback.
+        let hardware = GroupIPPPrinter()
+        for group in [first, second] {
+            group.model.inputs = [inputs[0]]
+            group.model.submitPrepared = { file, template, _ in
+                let client = try IPPClient(uri: URL(string: "ipp://localhost/ipp/print")!, sender: { try await hardware.send($0, $1, $2) })
+                return try await DirectPrinterService.submit(file: file, template: template,
+                    printer: Printer(id: "", name: "Mock"), client: client, readiness: .init(checks: 4, delayNanoseconds: 0),
+                    status: { status in
+                        if status == "Waiting for printer…" { await hardware.resume() }
+                    })
+            }
+        }
+        queue.printAll(); await queue.operation?.value
+        let actualOperations = await hardware.operations
+        try check(actualOperations == [11,4,5,6,11,11,4,5,6],
+                  "second group waits for printer readiness and sends exactly once without recreating groups")
+        try check(queue.documentCount == 0 && !queue.isError, "both groups clear after two confirmed direct submissions")
+
+        let unavailable = GroupIPPPrinter()
+        for group in [first, second, third] {
+            group.model.inputs = [inputs[0]]
+            group.model.submitPrepared = { file, template, _ in
+                let client = try IPPClient(uri: URL(string: "ipp://localhost/ipp/print")!, sender: { try await unavailable.send($0, $1, $2) })
+                return try await DirectPrinterService.submit(file: file, template: template,
+                    printer: Printer(id: "", name: "Mock"), client: client, readiness: .init(checks: 2, delayNanoseconds: 0))
+            }
+        }
+        queue.printAll(); await queue.operation?.value
+        try check(primary.inputs.isEmpty && second.model.inputs.count == 1 && third.model.inputs.count == 1 && queue.canPrint,
+                  "persistent refusal keeps only unsent groups ready for a safe retry")
+        try check(queue.message?.contains("This group was not sent.") == true && queue.message?.contains("printer isn’t ready") == true,
+                  "batch error includes the actual printer failure instead of hiding it")
+        await unavailable.resume()
+        queue.printAll(); await queue.operation?.value
+        let uploadCount = await unavailable.uploads
+        try check(uploadCount == 3 && queue.documentCount == 0,
+                  "retry sends only remaining groups without deleting them or duplicating the first job")
 
         // Finder pasteboard parsing and the actual service selector, including multiple URLs.
         let board = NSPasteboard.withUniqueName()

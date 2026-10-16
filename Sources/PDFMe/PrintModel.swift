@@ -356,10 +356,15 @@ final class PrintModel: ObservableObject {
                         accepted = try await submitPrepared(output, snapshot, useDirect)
                     } else if useDirect {
                         stage = "Connecting to printer"
-                        let endpoint = try await PrinterEndpointResolver.resolve(printerID: snapshot.printerID)
-                        guard let printer = printers.first(where: { $0.id == snapshot.printerID }) else { throw PrintError.message("Select an installed printer.") }
+                        let client: IPPClient
+                        do {
+                            let endpoint = try await PrinterEndpointResolver.resolve(printerID: snapshot.printerID)
+                            client = try IPPClient(uri: endpoint)
+                        } catch { throw DirectPrintNotSubmitted(error) }
+                        guard let printer = printers.first(where: { $0.id == snapshot.printerID }) else { throw DirectPrintNotSubmitted(PrintError.message("Select an installed printer.")) }
                         stage = "Checking settings and sending PDF"
-                        accepted = try await DirectPrinterService.submit(file: output, template: snapshot, printer: printer, client: IPPClient(uri: endpoint))
+                        accepted = try await DirectPrinterService.submit(file: output, template: snapshot, printer: printer, client: client,
+                            status: { stage in await MainActor.run { self.stage = stage } })
                     } else {
                         accepted = try await PrinterService.submit(file: output, template: snapshot, copies: 1)
                     }
@@ -373,6 +378,10 @@ final class PrintModel: ObservableObject {
                     if notificationsEnabled { notify(accepted.printerName) }
                     if submitPrepared == nil { await refreshQueue(for: snapshot.printerID) }
                 }
+            } catch let failure as DirectPrintNotSubmitted {
+                lastAttempt = .failed
+                requiresSubmissionReview = false
+                inform(failure.localizedDescription, error: true)
             } catch let failure as DirectPrintFailure {
                 // A known printer job may have printed even if its upload response was lost.
                 // Clear this batch and retain cancellation controls, avoiding a one-click duplicate.

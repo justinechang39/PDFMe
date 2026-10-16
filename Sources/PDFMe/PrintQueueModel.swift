@@ -130,7 +130,8 @@ final class PrintQueueModel: ObservableObject {
                 group.model.reservedForQueue = true
                 if let current = group.model.operation { await current.value }
                 guard group.model.lastAttempt == .sent else {
-                    inform("Stopped at \(group.model.template.name). \(sent) of \(batch.count) groups sent. Remaining groups were not sent.", error: true)
+                    let reason = group.model.message ?? "Couldn’t submit this group."
+                    inform("Stopped at \(group.model.template.name). \(sent) of \(batch.count) groups sent. \(reason) Later groups were not sent.", error: true)
                     return
                 }
                 sent += 1

@@ -1,5 +1,6 @@
 import Foundation
 import PDFKit
+import OSLog
 
 public enum PrintTransport {
     public static let preferenceKey = "directIPPPrinting"
@@ -210,7 +211,26 @@ public struct DirectPrintFailure: LocalizedError {
     public init(submission: PrintSubmission, message: String) { self.submission = submission; errorDescription = message }
 }
 
+/// No Send-Document request was attempted. Retrying cannot duplicate a printed document.
+public struct DirectPrintNotSubmitted: LocalizedError {
+    public let errorDescription: String?
+    public init(_ error: Error) { errorDescription = "This group was not sent. \(error.localizedDescription)" }
+}
+
+public struct PrinterReadinessPolicy: Sendable {
+    public var checks: Int
+    public var delayNanoseconds: UInt64
+    public init(checks: Int = 41, delayNanoseconds: UInt64 = 3_000_000_000) {
+        self.checks = max(1, checks); self.delayNanoseconds = delayNanoseconds
+    }
+}
+
+private struct PrinterNotReady: LocalizedError {
+    let errorDescription: String?
+}
+
 public enum DirectPrinterService {
+    private static let logger = Logger(subsystem: "io.github.justinechang39.PDFMe", category: "Direct printing")
     public static func jobAttributes(_ template: PrintTemplate) -> [IPPAttribute] {
         // Copies and N-up are already in the composed PDF. No vendor duplex aliases or raster back transforms.
         [.integer("copies", 1), .integer("number-up", 1), .text("media", [template.paper.ippMedia]),
@@ -222,58 +242,89 @@ public enum DirectPrinterService {
         let attrs = try await client.request(0x000B, extra: [.text("document-format", ["application/pdf"], tag: 0x49),
             .text("requested-attributes", ["document-format-supported", "operations-supported", "media-supported", "sides-supported",
                 "print-color-mode-supported", "print-scaling-supported", "printer-is-accepting-jobs", "printer-state", "printer-state-reasons"])])
+        let state = attrs.integers("printer-state").first ?? 0
+        let accepting = attrs.boolean("printer-is-accepting-jobs")
+        logger.notice("Preflight: IPP status \(attrs.code), state \(state), accepting \(accepting == true)")
+        if [0x0506, 0x0507].contains(attrs.code) {
+            throw PrinterNotReady(errorDescription: "The printer is busy or temporarily not accepting jobs.")
+        }
         try attrs.requireSuccess()
         guard attrs.strings("document-format-supported").contains("application/pdf"),
               [0x0004, 0x0005, 0x0006, 0x0008].allSatisfy(attrs.integers("operations-supported").contains) else {
             throw PrintError.message("This printer doesn’t support direct PDF job submission. Turn off Direct PDF printing to use macOS printing.")
-        }
-        guard attrs.boolean("printer-is-accepting-jobs") == true, attrs.integers("printer-state").first != 5 else {
-            throw PrintError.message("The printer isn’t accepting jobs: \(attrs.strings("printer-state-reasons").joined(separator: ", ")). Check the printer before printing.")
         }
         guard attrs.strings("media-supported").contains(template.paper.ippMedia),
               attrs.strings("sides-supported").contains(template.duplex.cupsValue),
               attrs.strings("print-color-mode-supported").contains(template.color == .color ? "color" : "monochrome") else {
             throw PrintError.message("The printer doesn’t support the selected paper, duplex, or color settings for direct PDF printing. Adjust the template or turn off Direct PDF printing.")
         }
+        guard let accepting, [3, 4, 5].contains(state) else {
+            throw PrintError.message("The printer didn’t report whether it can accept a job. Check the printer before printing.")
+        }
+        if !accepting || state == 5 {
+            let reasons = attrs.strings("printer-state-reasons").filter { $0 != "none" }.joined(separator: ", ")
+            throw PrinterNotReady(errorDescription: "The printer isn’t ready to accept this group\(reasons.isEmpty ? "." : ": \(reasons).") Check the printer for paper, supplies, or a paused job.")
+        }
         return attrs
     }
-    public static func submit(file: URL, template: PrintTemplate, printer: Printer, client: IPPClient) async throws -> PrintSubmission {
-        guard let pdf = PDFDocument(url: file), !pdf.isLocked, pdf.pageCount > 0 else { throw PrintError.message("The prepared print file is unreadable.") }
-        let caps = try await check(client, template: template)
-        var job = jobAttributes(template)
-        // Avoid a second fit/rotation by the Mac. Use native PDF coordinates where supported.
-        if caps.strings("print-scaling-supported").contains("none") { job.append(.text("print-scaling", ["none"])) }
-        let validated = try await client.request(0x0004, extra: [.boolean("ipp-attribute-fidelity", true),
-            .text("document-format", ["application/pdf"], tag: 0x49)], job: job)
-        try validated.requireSuccess()
-        try Task.checkCancellation()
-        let created: IPPMessage
+    private static func waitUntilReady(_ client: IPPClient, template: PrintTemplate, policy: PrinterReadinessPolicy,
+                                       onWaiting: @Sendable () async -> Void) async throws -> IPPMessage {
+        for attempt in 0..<max(1, policy.checks) {
+            try Task.checkCancellation()
+            do { return try await check(client, template: template) }
+            catch let error as PrinterNotReady {
+                guard attempt + 1 < max(1, policy.checks) else { throw error }
+                await onWaiting()
+                // Only repeat read-only status checks, before creating a job or uploading a PDF.
+                try await Task.sleep(nanoseconds: policy.delayNanoseconds)
+            }
+        }
+        throw PrintError.message("The printer is unavailable.")
+    }
+    public static func submit(file: URL, template: PrintTemplate, printer: Printer, client: IPPClient,
+                              readiness: PrinterReadinessPolicy = .init(),
+                              status: @Sendable (String) async -> Void = { _ in }) async throws -> PrintSubmission {
+        let submission: PrintSubmission
         do {
-            created = try await client.request(0x0005, extra: [.boolean("ipp-attribute-fidelity", true),
-                .text("job-name", ["PDFMe \(UUID().uuidString)"], tag: 0x42)], job: job)
-        } catch {
-            throw PrintError.message("Couldn’t confirm job creation. No PDF was uploaded. Check the printer before trying again. \(error.localizedDescription)")
-        }
-        guard let number = created.integers("job-id").first, number > 0 else {
-            try created.requireSuccess()
-            throw PrintError.message("The printer didn’t return a job number. No PDF was uploaded; check the printer before trying again.")
-        }
-        let submission = PrintSubmission(jobID: String(number), printerName: printer.name, directPrinterURI: client.uri)
-        do { try created.requireSuccess() }
-        catch {
-            try? await cancel(submission, client: client)
-            throw error
-        }
+            guard let pdf = PDFDocument(url: file), !pdf.isLocked, pdf.pageCount > 0 else { throw PrintError.message("The prepared print file is unreadable.") }
+            let caps = try await waitUntilReady(client, template: template, policy: readiness, onWaiting: { await status("Waiting for printer…") })
+            await status("Checking settings and sending PDF")
+            var job = jobAttributes(template)
+            // Avoid a second fit/rotation by the Mac. Use native PDF coordinates where supported.
+            if caps.strings("print-scaling-supported").contains("none") { job.append(.text("print-scaling", ["none"])) }
+            let validated = try await client.request(0x0004, extra: [.boolean("ipp-attribute-fidelity", true),
+                .text("document-format", ["application/pdf"], tag: 0x49)], job: job)
+            try validated.requireSuccess()
+            try Task.checkCancellation()
+            let created: IPPMessage
+            do {
+                created = try await client.request(0x0005, extra: [.boolean("ipp-attribute-fidelity", true),
+                    .text("job-name", ["PDFMe \(UUID().uuidString)"], tag: 0x42)], job: job)
+            } catch {
+                throw PrintError.message("Couldn’t confirm job creation. No PDF was uploaded. Check the printer before trying again. \(error.localizedDescription)")
+            }
+            guard let number = created.integers("job-id").first, number > 0 else {
+                try created.requireSuccess()
+                throw PrintError.message("The printer didn’t return a job number. No PDF was uploaded; check the printer before trying again.")
+            }
+            submission = PrintSubmission(jobID: String(number), printerName: printer.name, directPrinterURI: client.uri)
+            do { try created.requireSuccess() }
+            catch {
+                try? await cancel(submission, client: client)
+                throw error
+            }
+        } catch { throw DirectPrintNotSubmitted(error) }
         // One application-level Send-Document attempt. Never switch to lp or retry an uncertain upload.
         do {
             try Task.checkCancellation()
-            let sent = try await client.request(0x0006, extra: [.integer("job-id", number),
+            await status("Sending to printer")
+            let sent = try await client.request(0x0006, extra: [.integer("job-id", Int(submission.jobID)!),
                 .text("document-format", ["application/pdf"], tag: 0x49), .boolean("last-document", true)], file: file)
             try sent.requireSuccess()
             return submission
         } catch {
             throw DirectPrintFailure(submission: submission,
-                message: "Job \(number): submission wasn’t confirmed. It may have printed. Check the printer or cancel this job before sending it again. \(error.localizedDescription)")
+                message: "Job \(submission.jobID): submission wasn’t confirmed. It may have printed. Check the printer or cancel this job before sending it again. \(error.localizedDescription)")
         }
     }
     public static func cancel(_ submission: PrintSubmission, client supplied: IPPClient? = nil) async throws {

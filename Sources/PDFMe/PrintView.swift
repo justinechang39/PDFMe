@@ -35,7 +35,7 @@ struct PrintReviewView: View {
             if model.requiresSubmissionReview {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Check the printer before retrying. This group may already have been received.").font(.system(size: 12))
-                    Button("Allow retry…") { showRetryConfirmation = true }
+                    Button("Unlock for retry…") { showRetryConfirmation = true }
                 }.padding(12).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
             }
             queueNotice
@@ -59,11 +59,11 @@ struct PrintReviewView: View {
         }
         .onAppear { model.refreshPrinters() }
         .task(id: "\(model.template.printerID)-\(model.directPrinting)") { await model.monitorQueue(for: model.template.printerID) }
-        .alert("Allow this group to be sent again?", isPresented: $showRetryConfirmation) {
+        .alert("Unlock this group for retry?", isPresented: $showRetryConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Allow retry") { model.acknowledgeSubmissionReview() }
+            Button("Unlock for retry") { model.acknowledgeSubmissionReview() }
         } message: {
-            Text("Check the printer and its queue first. If the previous job was received, sending it again will print duplicate copies. You can clear the group instead.")
+            Text("Check the printer and its queue first. If the previous job was received, sending it again will print duplicate copies. Unlocking does not print; use Print afterward to send it.")
         }
         .alert("Resume printer?", isPresented: $showResumeConfirmation) {
             Button("Cancel", role: .cancel) { resumePrinterID = nil }

@@ -6,6 +6,7 @@ actor FakeIPPPrinter {
     let mode: String
     var operations: [UInt16] = []
     var uploaded = false
+    var statusChecks = 0
     init(_ mode: String = "ok") { self.mode = mode }
     func send(_ uri: URL, _ body: Data, _ file: URL?) throws -> Data {
         let request = try IPPCodec.decode(body)
@@ -13,14 +14,19 @@ actor FakeIPPPrinter {
         var code: UInt16 = 0, attributes: [IPPAttribute] = [], unsupported: [IPPAttribute] = []
         switch request.code {
         case 0xB:
+            statusChecks += 1
+            if mode == "offline" { throw URLError(.cannotConnectToHost) }
+            let waiting = statusChecks < 3
+            if mode == "busyThenReady" && waiting { code = 0x0507 }
+            if mode == "refusingThenReady" && waiting { code = 0x0506 }
             precondition(file == nil && request.strings("document-format") == ["application/pdf"])
             attributes = [.text("document-format-supported", [mode == "noPDF" ? "image/urf" : "application/pdf"]),
                 .init(tag: 0x23, name: "operations-supported", values: [4, 5, 6, 8, 9].filter { mode != "noCreate" || $0 != 5 }.map { IPPAttribute.integer("", $0).values[0] }),
                 .text("media-supported", PrintPaper.allCases.map(\.ippMedia)),
                 .text("sides-supported", PrintDuplex.allCases.map(\.cupsValue)),
                 .text("print-color-mode-supported", ["color", "monochrome"]), .text("print-scaling-supported", ["none", "fit"]),
-                .boolean("printer-is-accepting-jobs", mode != "notAccepting"),
-                .integer("printer-state", mode == "stopped" ? 5 : 3, tag: 0x23)]
+                .boolean("printer-is-accepting-jobs", mode != "notAccepting" && !(mode == "fullThenReady" && waiting)),
+                .integer("printer-state", mode == "stopped" || (mode == "stoppedThenReady" && waiting) ? 5 : mode == "processing" ? 4 : 3, tag: 0x23)]
         case 4, 5:
             precondition(file == nil)
             precondition(request.boolean("ipp-attribute-fidelity") == true)
@@ -116,13 +122,38 @@ actor FakeIPPPrinter {
                 await fake.check([11,4,5,6,9,8], uploaded: true)
             }
         }
-        for (mode, operations) in [("noPDF", [11]), ("noCreate", [11]), ("notAccepting", [11]), ("stopped", [11]),
+        for (mode, operations) in [("offline", [11]), ("noPDF", [11]), ("noCreate", [11]), ("notAccepting", [11]), ("stopped", [11]),
                                   ("rejected", [11,4]), ("substituted", [11,4]), ("noID", [11,4,5]), ("createSubstitution", [11,4,5,8])] {
             let fake = FakeIPPPrinter(mode), client = try IPPClient(uri: uri, sender: { try await fake.send($0, $1, $2) })
-            do { _ = try await DirectPrinterService.submit(file: file, template: template, printer: printer, client: client); fatalError("\(mode) accepted") }
-            catch { print("PASS: \(mode) blocks PDF upload") }
+            do { _ = try await DirectPrinterService.submit(file: file, template: template, printer: printer, client: client, readiness: .init(checks: 1)); fatalError("\(mode) accepted") }
+            catch is DirectPrintNotSubmitted { print("PASS: \(mode) blocks PDF upload and is known not sent") }
             await fake.check(operations.map(UInt16.init), uploaded: false)
         }
+        for mode in ["busyThenReady", "refusingThenReady", "fullThenReady", "stoppedThenReady", "processing"] {
+            let fake = FakeIPPPrinter(mode), client = try IPPClient(uri: uri, sender: { try await fake.send($0, $1, $2) })
+            _ = try await DirectPrinterService.submit(file: file, template: template, printer: printer, client: client,
+                readiness: .init(checks: 3, delayNanoseconds: 0))
+            await fake.check(mode == "processing" ? [11,4,5,6] : [11,11,11,4,5,6], uploaded: true)
+            print("PASS: \(mode) waits only when needed and creates/uploads once")
+        }
+        let blocked = FakeIPPPrinter("notAccepting")
+        do {
+            let client = try IPPClient(uri: uri, sender: { try await blocked.send($0, $1, $2) })
+            _ = try await DirectPrinterService.submit(file: file, template: template, printer: printer, client: client,
+                readiness: .init(checks: 3, delayNanoseconds: 0))
+            fatalError("Permanent refusal accepted")
+        } catch is DirectPrintNotSubmitted { print("PASS: Bounded readiness wait ends without a print job") }
+        await blocked.check([11,11,11], uploaded: false)
+        let cancelled = FakeIPPPrinter("notAccepting")
+        let waitingTask = Task {
+            let client = try IPPClient(uri: uri, sender: { try await cancelled.send($0, $1, $2) })
+            return try await DirectPrinterService.submit(file: file, template: template, printer: printer, client: client)
+        }
+        while await cancelled.statusChecks == 0 { await Task.yield() }
+        waitingTask.cancel()
+        do { _ = try await waitingTask.value; fatalError("Cancelled readiness wait sent a job") }
+        catch is DirectPrintNotSubmitted { print("PASS: Cancelling readiness wait is known not sent") }
+        await cancelled.check([11], uploaded: false)
         for mode in ["lostUploadReply", "uploadRejected"] {
             let fake = FakeIPPPrinter(mode), client = try IPPClient(uri: uri, sender: { try await fake.send($0, $1, $2) })
             do { _ = try await DirectPrinterService.submit(file: file, template: template, printer: printer, client: client); fatalError("Unconfirmed upload accepted") }
