@@ -22,7 +22,7 @@ struct PrintPreviewChecks {
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
         let inputs = try PrintComposer.inspect([root.appendingPathComponent("01 Sample A.pdf"), root.appendingPathComponent("02 Sample B.pdf")])
         let model = PrintModel()
-        model.template = PrintTemplate(orientation: .landscape, duplex: .shortEdge, pagesPerSide: 2)
+        model.template = PrintTemplate(orientation: .landscape, duplex: .shortEdge, pagesPerSide: 2, printAsImage: false)
         model.inputs = inputs
         model.setPreviewVisible(true)
         let first = try await waitForPreview(model)

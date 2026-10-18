@@ -41,7 +41,7 @@ public struct PrintTemplate: Identifiable, Codable, Equatable, Sendable {
     public var startEachFileOnNewSheet: Bool
     public init(id: UUID = UUID(), name: String = "New template", printerID: String = "", paper: PrintPaper = .a4,
                 orientation: PrintOrientation = .portrait, duplex: PrintDuplex = .off, pagesPerSide: Int = 1,
-                printAsImage: Bool = false, dpi: Int = 300, color: PrintColor = .color, startEachFileOnNewSheet: Bool = true) {
+                printAsImage: Bool = true, dpi: Int = 300, color: PrintColor = .color, startEachFileOnNewSheet: Bool = true) {
         self.id = id; self.name = name; self.printerID = printerID; self.paper = paper
         self.orientation = orientation; self.duplex = duplex; self.pagesPerSide = pagesPerSide
         self.printAsImage = printAsImage; self.dpi = dpi; self.color = color

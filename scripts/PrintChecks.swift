@@ -49,7 +49,7 @@ struct PrintChecks {
         let a = root.appendingPathComponent("01 Sample A.pdf"), b = root.appendingPathComponent("02 Sample B.pdf")
         makePDF(a, prefix: "A", pages: 3); makePDF(b, prefix: "B", pages: 2)
         let sourceData = try Data(contentsOf: a)
-        var template = PrintTemplate(name: "Test", printerID: "test_queue", orientation: .landscape, duplex: .shortEdge, pagesPerSide: 2)
+        var template = PrintTemplate(name: "Test", printerID: "test_queue", orientation: .landscape, duplex: .shortEdge, pagesPerSide: 2, printAsImage: false)
         let inspected = try PrintComposer.inspect([a, b])
         try check(inspected.map(\.pages) == [3, 2], "inspect PDF page counts")
         let plan = try PrintPlan(pageCounts: [3, 2], template: template)
