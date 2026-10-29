@@ -6,8 +6,8 @@
 <key>CFBundleIdentifier</key><string>io.github.justinechang39.PDFMe.Finder</string>
 <key>CFBundleExecutable</key><string>PDFMeFinder</string>
 <key>CFBundlePackageType</key><string>XPC!</string>
-<key>CFBundleShortVersionString</key><string>1.7.0</string>
-<key>CFBundleVersion</key><string>14</string>
+<key>CFBundleShortVersionString</key><string>1.8.0</string>
+<key>CFBundleVersion</key><string>15</string>
 <key>CFBundleSupportedPlatforms</key><array><string>MacOSX</string></array>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>

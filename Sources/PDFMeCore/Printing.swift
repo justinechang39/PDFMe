@@ -75,7 +75,7 @@ public enum PrintError: LocalizedError {
     case message(String)
     public var errorDescription: String? { if case let .message(text) = self { return text }; return nil }
 }
-public struct PrintPageReference: Equatable, Sendable {
+public struct PrintPageReference: Hashable, Sendable {
     public let document: Int
     public let page: Int
 }
@@ -236,6 +236,33 @@ public enum PrintComposer {
         } catch { context.closePDF(); throw error }
         try Task.checkCancellation()
         return data as Data
+    }
+
+    /// Draw one side straight into a small bitmap for preview thumbnails. Uses the same cells and
+    /// page drawing as printing, but never rasterizes at the print resolution.
+    public static func thumbnail(of side: [PrintPageReference], documents: [Int: PDFDocument], template: PrintTemplate, maxPixelSize: Int) throws -> CGImage {
+        try template.validate()
+        try Task.checkCancellation()
+        guard side.count <= template.pagesPerSide, (16...1024).contains(maxPixelSize) else { throw PrintError.message("Invalid preview layout.") }
+        let media = CGRect(origin: .zero, size: template.pageSize)
+        let size = thumbnailPixelSize(template: template, maxPixelSize: maxPixelSize)
+        let gray = template.color == .grayscale
+        let space = gray ? CGColorSpaceCreateDeviceGray() : CGColorSpaceCreateDeviceRGB()
+        let info = gray ? CGImageAlphaInfo.none.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
+        guard let bitmap = CGContext(data: nil, width: size.width, height: size.height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info) else {
+            throw PrintError.message("Couldn’t create the sheet thumbnail.")
+        }
+        bitmap.scaleBy(x: CGFloat(size.width) / media.width, y: CGFloat(size.height) / media.height)
+        bitmap.setFillColor(CGColor(gray: 1, alpha: 1)); bitmap.fill(media)
+        try draw(side, documents: documents, cells: cellRects(template: template), in: bitmap)
+        try Task.checkCancellation()
+        guard let image = bitmap.makeImage() else { throw PrintError.message("Couldn’t create the sheet thumbnail.") }
+        return image
+    }
+    public static func thumbnailPixelSize(template: PrintTemplate, maxPixelSize: Int) -> (width: Int, height: Int) {
+        let media = template.pageSize
+        let scale = CGFloat(maxPixelSize) / max(media.width, media.height)
+        return (max(1, Int((media.width * scale).rounded())), max(1, Int((media.height * scale).rounded())))
     }
 
     private static func renderSide(_ side: [PrintPageReference], documents: [Int: PDFDocument], template: PrintTemplate, in context: CGContext) throws {

@@ -87,9 +87,19 @@ final class PrintModel: ObservableObject {
         guard let index = previewSideIndex, let previewPlan else { return [] }
         return previewPlan.sides[index]
     }
-    var previewSheetTitle: String {
-        guard let index = previewSideIndex else { return "" }
-        return template.duplex == .off ? "Sheet \(index + 1)" : "Sheet \(index / 2 + 1) · \(index % 2 == 0 ? "Front" : "Back")"
+    var previewSheetTitle: String { previewSideIndex.map(sheetTitle) ?? "" }
+    func sheetTitle(forSide index: Int) -> String {
+        template.duplex == .off ? "Sheet \(index + 1)" : "Sheet \(index / 2 + 1) · \(index % 2 == 0 ? "Front" : "Back")"
+    }
+    /// Thumbnails for every side of the selected PDF, shared by all preview surfaces of this model.
+    let thumbnails = PrintThumbnailStore()
+    func previewSide(at offset: Int) -> [PrintPageReference] {
+        guard previewIndices.indices.contains(offset), let previewPlan else { return [] }
+        return previewPlan.sides[previewIndices[offset]]
+    }
+    func previewThumbnailKey(at offset: Int) -> PrintThumbnailKey? {
+        guard previewIndices.indices.contains(offset) else { return nil }
+        return PrintThumbnailKey(side: previewSide(at: offset), inputs: inputs, template: template)
     }
 
     func selectPreview(_ id: UUID) {
@@ -97,21 +107,31 @@ final class PrintModel: ObservableObject {
         selectedPreviewID = id; previewOffset = 0
         refreshPreview()
     }
+    /// Wraps around in both directions; does nothing with fewer than two sides.
     func movePreview(by offset: Int) {
-        guard previewIndices.indices.contains(previewOffset + offset) else { return }
-        previewOffset += offset
-        renderPreview()
+        let count = previewIndices.count
+        guard count > 1 else { return }
+        selectPreviewSide(at: (previewOffset + offset % count + count) % count)
+    }
+    /// Jump to one side of the selected PDF, such as a clicked thumbnail.
+    @discardableResult
+    func selectPreviewSide(at offset: Int) -> Bool {
+        guard previewIndices.indices.contains(offset) else { return false }
+        if offset != previewOffset { previewOffset = offset; renderPreview() }
+        return true
     }
     func setPreviewVisible(_ visible: Bool) {
         previewObserverCount = max(0, previewObserverCount + (visible ? 1 : -1))
         if previewVisible { refreshPreview() }
-        else { previewTask?.cancel(); previewGeneration = UUID(); previewLoading = false }
+        else { previewTask?.cancel(); previewGeneration = UUID(); previewLoading = false; thumbnails.cancelAll() }
     }
     private func refreshPreview() {
         if !inputs.contains(where: { $0.id == selectedPreviewID }) {
             selectedPreviewID = inputs.first?.id
             previewOffset = 0
         }
+        // Thumbnails are keyed by their content; this only drops images of PDFs that left the batch.
+        thumbnails.retain(documents: Set(inputs.map(\.id)))
         previewPlan = plan
         if let document = inputs.firstIndex(where: { $0.id == selectedPreviewID }), let previewPlan {
             previewIndices = previewPlan.sideIndices(forDocument: document)

@@ -11,6 +11,9 @@ swift build
 bin_dir="$(swift build --show-bin-path)"
 swiftc -parse-as-library -I "$bin_dir/Modules" "$bin_dir/PDFMeCore.build/"*.swift.o Sources/PDFMe/PrintModel.swift scripts/PrintPreviewChecks.swift -o work/PrintPreviewChecks
 work/PrintPreviewChecks "$qa_dir"
+# Thumbnail pixels against prepared sides, plus cache, queue, and cancellation bounds.
+swiftc -parse-as-library -I "$bin_dir/Modules" "$bin_dir/PDFMeCore.build/"*.swift.o scripts/PrintThumbnailChecks.swift -o work/PrintThumbnailChecks
+work/PrintThumbnailChecks "$qa_dir"
 swiftc -parse-as-library -I "$bin_dir/Modules" "$bin_dir/PDFMeCore.build/"*.swift.o scripts/DirectPrintChecks.swift -o work/DirectPrintChecks
 work/DirectPrintChecks "$qa_dir"
 python3 scripts/ipp-wire-check.py work/DirectPrintChecks "$qa_dir/01 Sample A.pdf"

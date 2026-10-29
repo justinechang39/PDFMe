@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0 — 2026-10-29
+
+- Add a thumbnail strip under the print preview showing every side of the selected PDF, with sheet/front/back badges, PDF page numbers, tooltips, and accessibility labels. Click a thumbnail to jump to that side.
+- Add a grid button to the preview header that shows all sides in a scrollable grid; clicking one returns to the large preview on that side.
+- Preview arrows now wrap around: back from the first side goes to the last, and next from the last goes to the first. With a single side both are disabled.
+- Thumbnails are drawn at most 300 pixels on the long edge with the print layout code, never at the print resolution. Only visible thumbnails are rendered, one at a time, with cancellation, a bounded cache, a bounded queue, and shared images for identical sides. Print output is unchanged.
+- Extend offline checks: thumbnail pixels against prepared sides for page ranges, 2-up duplex with copies and blank backs, grayscale 4-up, rotation, crop, and annotations; wraparound and exact side selection; invalidation after range, layout, copy, and PDF changes; cache, queue, concurrency, and cancellation bounds. No physical printing in tests.
+
 ## 1.7.0 — 2026-10-29
 
 - Add per-PDF page ranges in the mini app and Print Queue. **Pages: All** remains the default; **Custom** accepts PDF page numbers such as `1-15, 21-30` or `21-end`, with commas, spaces, en/em dashes, and `end`. Overlaps print once in document order.

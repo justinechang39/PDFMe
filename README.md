@@ -51,7 +51,7 @@ Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or
 1. Add the PDFs you want to print.
 2. Choose a saved template and the printer. Adjust settings for this job if needed.
 3. Set **Copies** on each PDF row. Drag the handle on the right to change the file order; each document’s copies stay together. Under the file name, **Pages** prints **All** pages by default; choose **Custom** to print only some of them (see [Page ranges](#page-ranges)).
-4. Click a PDF in the list to see its sheet layout on the right. Use the arrows to inspect its printed sides. **Open in Preview** opens the complete batch in macOS Preview.
+4. Click a PDF in the list to see its sheet layout on the right. Click a thumbnail in the strip under the preview, or use the arrows, to inspect its printed sides; the grid button shows them all at once. **Open in Preview** opens the complete batch in macOS Preview.
 5. Click **Print** to send one job to the selected printer.
 
 After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s status and cancellation controls. Previewing or a failure before upload keeps the files for review. An uncertain direct upload also clears the batch to prevent accidental duplicates and retains its printer job number.
@@ -107,7 +107,11 @@ If macOS pauses the selected printer queue, PDFMe shows the queue’s error and 
 
 Print PDF mode expands to show the file list and settings on the left and a live preview on the right. Selecting a file highlights it and shows the sides that contain it in the actual batch. The preview includes its requested copies, blank duplex backs, and neighboring PDFs when documents share a side. Sheet numbers refer to the full print job.
 
+A strip of small thumbnails under the large preview lists every side of the selected PDF, labelled with its sheet (for example **3F** for sheet 3, front) and its PDF page numbers; hover for the full description. Click a thumbnail to jump to that side. The arrows wrap around, so going back from the first side shows the last, and the strip scrolls to keep the selected side in view. The grid button in the preview header replaces the large preview with a scrollable grid of all sides; click a side to return to it.
+
 Changes to paper, orientation, pages per side, image rendering, and color update the preview automatically. Rendering runs in the background and only prepares the visible side. Old renders are cancelled when selection or settings change; clearing the batch clears the preview. The preview also works before a printer is selected.
+
+Thumbnails are drawn with the same layout code as printing, but directly at a small size (at most 300 pixels on the long edge) rather than at the print resolution. Only thumbnails on screen are rendered, one at a time; ones scrolled past are cancelled. Identical sides, such as repeated copies, share one image, and a bounded cache keeps recent thumbnails so moving between sides or opening the grid doesn’t redraw them. Changing pages, layout, or color shows blank placeholders until the new thumbnails are ready, never the old ones.
 
 The inline preview shares the print compositor. Black-and-white vector jobs are simulated in grayscale for display; actual printer color handling and printable margins can differ. Front/back labels identify the side being shown, not an animation of the physical duplex turn. **Open in Preview** still generates the complete batch at the selected image resolution. No preview operation submits a print job.
 

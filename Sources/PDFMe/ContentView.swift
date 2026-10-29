@@ -331,11 +331,13 @@ struct ToolbarIconButtonStyle: ButtonStyle {
     @State private var hovered = false
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let width: CGFloat, height: CGFloat
+    init(width: CGFloat = 44, height: CGFloat = 44) { self.width = width; self.height = height }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .medium))
-            .frame(width: 44, height: 44)
+            .frame(width: width, height: height)
             .background(moss.opacity(configuration.isPressed ? 0.20 : hovered ? 0.13 : 0.07), in: RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
             .opacity(isEnabled ? 1 : 0.45)
