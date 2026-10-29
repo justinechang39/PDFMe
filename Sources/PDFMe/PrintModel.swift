@@ -28,7 +28,17 @@ final class PrintModel: ObservableObject {
     }
     @Published private(set) var directJobStatus: String?
     @Published private(set) var checkingJobStatus = false
-    @Published var inputs: [PrintInput] = [] { didSet { refreshPreview() } }
+    @Published var inputs: [PrintInput] = [] {
+        didSet {
+            if copyDrafts.keys.contains(where: { id in !inputs.contains { $0.id == id } }) {
+                copyDrafts = copyDrafts.filter { id, _ in inputs.contains { $0.id == id } }
+            }
+            refreshPreview()
+        }
+    }
+    /// Copy text that isn't a valid count yet, such as an empty field while retyping.
+    /// Shared by every view of this model so a hidden stale count can never be printed.
+    @Published private(set) var copyDrafts: [UUID: String] = [:]
     @Published var printers: [Printer] = []
     @Published var capabilities: PrinterCapabilities?
     @Published var templates: [PrintTemplate]
@@ -144,7 +154,15 @@ final class PrintModel: ObservableObject {
         if saved != nil && templates.isEmpty { message = "Saved templates couldn’t be read. Create and save a new template."; isError = true }
     }
 
-    var plan: PrintPlan? { try? PrintPlan(pageCounts: inputs.map(\.pages), template: template, copies: inputs.map(\.copies)) }
+    var plan: PrintPlan? { try? PrintPlan(inputs: inputs, template: template) }
+    /// Unfinished copy counts or page ranges. These block preview export and printing.
+    var inputProblem: String? {
+        for input in inputs {
+            if copyDrafts[input.id] != nil { return "Enter 1–999 copies for \(input.url.lastPathComponent)." }
+            do { _ = try input.selectedPages() } catch { return error.localizedDescription }
+        }
+        return nil
+    }
     var validationMessage: String? {
         guard printers.contains(where: { $0.id == template.printerID }) else { return "Select an installed printer." }
         guard let capabilities else { return loadingCapabilities ? "Reading printer options…" : "Refresh the printer options before printing." }
@@ -152,7 +170,7 @@ final class PrintModel: ObservableObject {
         return nil
     }
     var changed: Bool { templates.first(where: { $0.id == selectedTemplateID }) != template }
-    var canPreview: Bool { !occupied && !resumingPrinter && !loadingPrinters && !loadingCapabilities && !inputs.isEmpty && validationMessage == nil }
+    var canPreview: Bool { !occupied && !resumingPrinter && !loadingPrinters && !loadingCapabilities && !inputs.isEmpty && validationMessage == nil && inputProblem == nil }
     var canPrint: Bool { canPreview && !requiresSubmissionReview && (directPrinting || (queueStatus?.isPaused != true && queueError == nil)) }
 
     // SwiftUI cancels this when the panel closes or the selected printer changes.
@@ -306,7 +324,25 @@ final class PrintModel: ObservableObject {
     }
     func setCopies(_ count: Int, for id: UUID) {
         guard !occupied, let index = inputs.firstIndex(where: { $0.id == id }) else { return }
-        inputs[index].copies = min(999, max(1, count))
+        copyDrafts[id] = nil
+        inputs[index].copies = min(CopyCount.range.upperBound, max(CopyCount.range.lowerBound, count))
+    }
+    func copiesText(for id: UUID) -> String {
+        copyDrafts[id] ?? inputs.first { $0.id == id }.map { String($0.copies) } ?? ""
+    }
+    /// Valid counts apply immediately. Anything else stays visible and blocks printing.
+    func editCopies(_ text: String, for id: UUID) {
+        guard !occupied, let index = inputs.firstIndex(where: { $0.id == id }) else { return }
+        if let count = CopyCount.parse(text) {
+            copyDrafts[id] = nil
+            if inputs[index].copies != count { inputs[index].copies = count }
+        } else if copyDrafts[id] != text { copyDrafts[id] = text }
+    }
+    /// Leaving the field or pressing Return restores the last valid count on screen.
+    func finishCopiesEdit(for id: UUID) { if copyDrafts[id] != nil { copyDrafts[id] = nil } }
+    func setPageSelection(_ selection: PageSelection, for id: UUID) {
+        guard !occupied, let index = inputs.firstIndex(where: { $0.id == id }), inputs[index].pageSelection != selection else { return }
+        inputs[index].pageSelection = selection
     }
     func remove(_ id: UUID) { if !occupied { inputs.removeAll { $0.id == id } } }
     func clear() { guard !occupied else { return }; inputs = []; message = nil; submission = nil; directJobStatus = nil; requiresSubmissionReview = false; cleanup() }
@@ -315,10 +351,11 @@ final class PrintModel: ObservableObject {
     func prepare(previewOnly: Bool) {
         lastAttempt = .failed
         guard previewOnly ? canPreview : canPrint else {
-            inform(queueStatus?.isPaused == true && !previewOnly ? "Resume the printer queue before printing." : (validationMessage ?? queueError ?? "Add PDF files first."), error: true)
+            inform(inputProblem ?? (queueStatus?.isPaused == true && !previewOnly ? "Resume the printer queue before printing." : (validationMessage ?? queueError ?? "Add PDF files first.")), error: true)
             return
         }
-        let urls = inputs.map(\.url), snapshot = template, counts = inputs.map(\.copies), useDirect = directPrinting
+        // Copy and page selections are captured with the reviewed inputs, never re-derived later.
+        let reviewed = inputs, snapshot = template, useDirect = directPrinting
         if !previewOnly { submission = nil; directJobStatus = nil }
         busy = true; submitting = false; progress = 0; stage = "Preparing print layout"; message = nil
         operation = Task {
@@ -330,7 +367,7 @@ final class PrintModel: ObservableObject {
                 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
                 let output = root.appendingPathComponent("Print layout.pdf")
                 let worker = Task.detached(priority: .userInitiated) {
-                    try PrintComposer.prepare(urls: urls, template: snapshot, output: output, copies: counts) { current, total in
+                    try PrintComposer.prepare(inputs: reviewed, template: snapshot, output: output) { current, total in
                         Task { @MainActor in
                             guard self.busy && !self.submitting else { return }
                             self.progress = Double(current) / Double(total)

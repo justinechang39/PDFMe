@@ -15,9 +15,18 @@ struct PrintPreviewView: View {
                     .lineLimit(2).help(input.url.path)
                 Text("\(model.template.paper.rawValue) · \(model.template.orientation.rawValue) · \(model.template.pagesPerSide) per side")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
+                if input.pageSelection.isCustom, let count = try? input.selectedPages().count {
+                    Text("PDF pages \(input.pageSelection.text.trimmingCharacters(in: .whitespacesAndNewlines)) · \(count) of \(input.pages)")
+                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+                }
                 ZStack {
                     RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.045))
-                    if model.previewLoading {
+                    if model.previewIndices.isEmpty, let problem = model.inputProblem {
+                        VStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.circle").font(.system(size: 24))
+                            Text(problem).font(.system(size: 12)).multilineTextAlignment(.center)
+                        }.foregroundStyle(.secondary).padding(24)
+                    } else if model.previewLoading {
                         VStack(spacing: 10) {
                             ProgressView().controlSize(.small)
                             Text("Updating preview…").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -32,26 +41,28 @@ struct PrintPreviewView: View {
                             .accessibilityLabel("Print preview for \(input.url.lastPathComponent), \(model.previewSheetTitle)")
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                HStack(spacing: 8) {
-                    Button { model.movePreview(by: -1) } label: { Image(systemName: "chevron.left") }
-                        .buttonStyle(ToolbarIconButtonStyle()).disabled(model.previewOffset == 0)
-                        .help("Previous side").accessibilityLabel("Previous preview side")
-                    Spacer(minLength: 0)
-                    VStack(spacing: 4) {
-                        Text(model.previewSheetTitle).font(.system(size: 12, weight: .medium))
-                        Text("\(model.previewOffset + 1) of \(model.previewIndices.count) sides for this PDF")
-                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                if !model.previewIndices.isEmpty {
+                    HStack(spacing: 8) {
+                        Button { model.movePreview(by: -1) } label: { Image(systemName: "chevron.left") }
+                            .buttonStyle(ToolbarIconButtonStyle()).disabled(model.previewOffset == 0)
+                            .help("Previous side").accessibilityLabel("Previous preview side")
+                        Spacer(minLength: 0)
+                        VStack(spacing: 4) {
+                            Text(model.previewSheetTitle).font(.system(size: 12, weight: .medium))
+                            Text("\(model.previewOffset + 1) of \(model.previewIndices.count) sides for this PDF")
+                                .font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Button { model.movePreview(by: 1) } label: { Image(systemName: "chevron.right") }
+                            .buttonStyle(ToolbarIconButtonStyle()).disabled(model.previewOffset + 1 >= model.previewIndices.count)
+                            .help("Next side").accessibilityLabel("Next preview side")
                     }
-                    Spacer(minLength: 0)
-                    Button { model.movePreview(by: 1) } label: { Image(systemName: "chevron.right") }
-                        .buttonStyle(ToolbarIconButtonStyle()).disabled(model.previewOffset + 1 >= model.previewIndices.count)
-                        .help("Next side").accessibilityLabel("Next preview side")
-                }
-                if model.previewSide.isEmpty {
-                    Text("Blank back · next PDF or copy starts on a fresh sheet")
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
-                } else {
-                    Text(pageDescription).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(3)
+                    if model.previewSide.isEmpty {
+                        Text("Blank back · next PDF or copy starts on a fresh sheet")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                    } else {
+                        Text(pageDescription).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(3)
+                    }
                 }
                 Text("\(model.template.duplex.rawValue). Printer margins may slightly change the final scale.")
                     .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

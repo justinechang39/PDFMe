@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0 — 2026-10-29
+
+- Add per-PDF page ranges in the mini app and Print Queue. **Pages: All** remains the default; **Custom** accepts PDF page numbers such as `1-15, 21-30` or `21-end`, with commas, spaces, en/em dashes, and `end`. Overlaps print once in document order.
+- Show the selected page count and inline errors on a second row under each file name. Invalid or unfinished ranges block Print, Open in Preview, and Print all groups, so no group is sent and nothing silently falls back to all pages.
+- Apply selected pages before pages per side, duplex blank backs, and collated copies. The preview, sheet counts, and prepared job use the same pages. Ranges travel with each PDF when reordered or moved between groups and are not saved in templates.
+- Refuse to print a PDF whose page count changed after it was added, instead of reinterpreting its range.
+- Fix the copies field recreating “1” on backspace. Both views share a text editor that allows an empty field, applies valid 1–999 counts as you type, blocks printing while the value is empty or invalid, and restores the last valid count when you leave the field.
+- Extend offline checks for range parsing, prepared page content with 2-up, duplex, and copies, group moves, invalid-range blocking, and copy editing. No physical printing in tests.
+
 ## 1.5.3
 
 - Fix the permission error when the top-level Finder action tries to open selected PDFs from its sandbox. Route selected paths through PDFMe’s existing macOS Service using a named pasteboard; the main app validates and opens them with its own permissions.

@@ -191,6 +191,8 @@ struct PrintQueueChecks {
         try check(uploadCount == 3 && queue.documentCount == 0,
                   "retry sends only remaining groups without deleting them or duplicating the first job")
 
+        try await pageRangeChecks(queue: queue, groups: [first, second, third], root: root)
+
         // Finder pasteboard parsing and the actual service selector, including multiple URLs.
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
@@ -215,4 +217,91 @@ struct PrintQueueChecks {
         print("All desktop queue and Finder service checks passed. No physical print jobs submitted.")
     }
     @MainActor static func tryURLs(_ board: NSPasteboard) -> [URL]? { try? FinderPrintService.fileURLs(from: board) }
+    static func labels(_ page: PDFPage) -> Set<String> {
+        let text = page.string ?? ""
+        let regex = try! NSRegularExpression(pattern: "\\b[A-Z][0-9]+\\b")
+        return Set(regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).map { String(text[Range($0.range, in: text)!]) })
+    }
+
+    /// Page selections and copy drafts belong to each document, survive moves, and gate every group.
+    @MainActor
+    static func pageRangeChecks(queue: PrintQueueModel, groups: [PrintGroup], root: URL) async throws {
+        let (first, second, third) = (groups[0], groups[1], groups[2])
+        let primary = first.model
+        var calls: [String] = []
+        var prepared: [String: [Set<String>]] = [:]
+        for group in groups {
+            group.model.clear()
+            // Vector output keeps the fixture page labels readable in the prepared job.
+            group.model.template.printAsImage = false
+            group.model.submitPrepared = { file, template, _ in
+                calls.append(template.name)
+                let pdf = PDFDocument(url: file)!
+                prepared[template.name] = (0..<pdf.pageCount).map { labels(pdf.page(at: $0)!) }
+                return PrintSubmission(jobID: "range-\(calls.count)", printerName: "Mock")
+            }
+        }
+        let a = root.appendingPathComponent("01 Sample A.pdf"), b = root.appendingPathComponent("02 Sample B.pdf")
+        let c = root.appendingPathComponent("03 Sample C.pdf")
+        primary.inputs = try PrintComposer.inspect([c, a])
+        let cID = primary.inputs[0].id, aID = primary.inputs[1].id
+        try check(primary.inputs.allSatisfy { !$0.pageSelection.isCustom } && primary.plan?.sheetCount == 17, "new documents default to all pages")
+        primary.setPageSelection(.custom("21-end"), for: cID)
+        primary.setPageSelection(.custom("2"), for: aID)
+        try check(primary.plan?.sheetCount == 6 && primary.inputProblem == nil, "sheet count uses the selected pages")
+        primary.move(aID, to: cID)
+        try check(primary.inputs.map(\.id) == [aID, cID] && primary.inputs.map(\.pageSelection.text) == ["2", "21-end"], "reordering keeps each document’s page selection")
+        queue.moveDocument(cID, from: first.id, to: second.id)
+        try check(second.model.inputs.map(\.id) == [cID] && second.model.inputs[0].pageSelection == .custom("21-end") && primary.inputs.map(\.id) == [aID],
+                  "moving a PDF to another group keeps its page selection")
+
+        // An invalid later group blocks the whole batch, so earlier groups are not sent either.
+        third.model.inputs = try PrintComposer.inspect([b])
+        let bID = third.model.inputs[0].id
+        for unfinished in ["", "1-", "1,", "3", "0", "2-1", "x"] {
+            third.model.setPageSelection(.custom(unfinished), for: bID)
+            try check(third.model.inputProblem != nil && third.model.plan == nil && !third.model.canPreview && !queue.canPrint,
+                      "unfinished custom pages \(unfinished.debugDescription) block preview export and printing")
+        }
+        try check(queue.inputProblem?.hasPrefix("Group 3:") == true, "the queue names the group with the page problem")
+        queue.printAll(); await queue.operation?.value
+        try check(calls.isEmpty && queue.message?.contains("Nothing was sent") == true && primary.inputs.count == 1 && second.model.inputs.count == 1 && third.model.inputs.count == 1,
+                  "Print all groups sends nothing while any group has an invalid range")
+        third.model.prepare(previewOnly: true)
+        try check(!third.model.busy && third.model.isError && third.model.message == third.model.inputProblem, "Open in Preview is refused for an invalid range instead of using all pages")
+        third.model.prepare(previewOnly: false)
+        try check(calls.isEmpty && !third.model.busy && third.model.lastAttempt == .failed, "a single group with an invalid range is not submitted")
+        third.model.setPageSelection(.custom("1"), for: bID)
+        third.model.setPageSelection(PageSelection(isCustom: false, text: "1"), for: bID)
+        try check(third.model.plan?.sides.compactMap(\.first?.page) == [0, 1], "switching to All restores every page")
+
+        // Copy text drafts: backspace to empty, retype, and never print a hidden stale count.
+        primary.editCopies("", for: aID)
+        try check(primary.copiesText(for: aID) == "" && primary.inputs[0].copies == 1 && primary.inputProblem != nil && !queue.canPrint,
+                  "an empty copies field stays empty while editing and blocks printing")
+        queue.printAll(); await queue.operation?.value
+        try check(calls.isEmpty, "Print all groups never sends the stale count behind an empty copies field")
+        primary.editCopies("2", for: aID)
+        try check(primary.copiesText(for: aID) == "2" && primary.inputs[0].copies == 2 && primary.inputProblem == nil, "typing 2 after clearing applies 2, not 12 or 21")
+        for text in ["2x", "2.5", "0", "1000", "-2"] {
+            primary.editCopies(text, for: aID)
+            try check(primary.copiesText(for: aID) == text && primary.inputs[0].copies == 2 && !queue.canPrint, "invalid copies \(text.debugDescription) stay visible and block printing")
+        }
+        primary.finishCopiesEdit(for: aID)
+        try check(primary.copiesText(for: aID) == "2" && primary.inputProblem == nil, "leaving the field restores the last valid count")
+        primary.editCopies("", for: aID)
+        queue.moveDocument(aID, from: first.id, to: third.id)
+        try check(primary.copyDrafts.isEmpty && third.model.inputs.last?.copies == 2 && third.model.inputs.last?.pageSelection == .custom("2") && third.model.inputProblem == nil,
+                  "moving a document with an unfinished copy edit restores its last valid count")
+        queue.moveDocument(aID, from: third.id, to: first.id)
+        primary.setCopies(2, for: aID)
+
+        try check(queue.canPrint, "valid page ranges and copies can be printed")
+        queue.printAll(); await queue.operation?.value
+        try check(calls == ["Full page", "Two-up", "Third"], "all groups submit once their ranges are valid")
+        try check(prepared["Full page"] == [["A2"], [], ["A2"], []], "prepared job prints only page 2, collated twice with duplex blank backs")
+        try check(prepared["Two-up"] == [["C21", "C22"], ["C23", "C24"], ["C25", "C26"], ["C27", "C28"], ["C29", "C30"], []], "moved document prints 21-end with the target group’s 2-up layout")
+        try check(prepared["Third"] == [["B1"], ["B2"]], "All prints every page after a custom range was cleared")
+        try check(queue.documentCount == 0, "groups with page ranges clear after submission")
+    }
 }

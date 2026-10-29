@@ -66,6 +66,8 @@ struct PrintQueueView: View {
                 if let message = queue.message {
                     Text(message).font(.system(size: 12)).foregroundStyle(queue.isError ? .red : .secondary)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                } else if let problem = queue.inputProblem {
+                    Text(problem).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Groups are sent in order, one job per group.").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
@@ -117,7 +119,7 @@ private struct PrintGroupCard: View {
                             .frame(width: 26, height: 26).background(queueAccent.opacity(0.1), in: Circle())
                         VStack(alignment: .leading, spacing: 4) {
                             Text(model.template.name).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                            Text("\(model.inputs.count) PDFs · \(model.plan?.sheetCount ?? 0) sheets")
+                            Text("\(model.inputs.count) PDFs · " + (model.inputProblem == nil ? "\(model.plan?.sheetCount ?? 0) sheets" : "check pages or copies"))
                                 .font(.system(size: 10)).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
@@ -176,24 +178,35 @@ private struct QueueDocumentRow: View {
     let input: PrintInput
     @State private var targeted = false
     private var model: PrintModel { group.model }
-    private var copies: Binding<Int> {
-        Binding(get: { model.inputs.first { $0.id == input.id }?.copies ?? input.copies }, set: { model.setCopies($0, for: input.id) })
-    }
+    private func showPreview() { queue.selectedID = group.id; model.selectPreview(input.id) }
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            summary
+            // Second row keeps copies, actions, and the drag handle uncrowded.
+            PageSelectionControls(model: model, id: input.id, onEdit: showPreview)
+                .disabled(queue.occupied || model.requiresSubmissionReview)
+        }.padding(10)
+            .background(targeted || (queue.selectedID == group.id && model.selectedPreviewID == input.id) ? queueAccent.opacity(0.07) : .clear)
+            .onDrop(of: [QueueDocumentDrag.type], isTargeted: $targeted) { providers in
+                guard !queue.occupied, let provider = providers.first else { return false }
+                QueueDocumentDrag.load(provider) { source, id in
+                    if source == group.id { model.move(id, to: input.id) }
+                    else { queue.moveDocument(id, from: source, to: group.id); model.move(id, to: input.id) }
+                }
+                return true
+            }
+    }
+    private var summary: some View {
         HStack(spacing: 8) {
-            Button {
-                queue.selectedID = group.id; model.selectPreview(input.id)
-            } label: {
+            Button(action: showPreview) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(input.url.lastPathComponent).font(.system(size: 12, weight: .medium)).lineLimit(2).help(input.url.path)
-                    Text("\(input.pages) pages").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text("\(input.pages) \(input.pages == 1 ? "page" : "pages")").font(.system(size: 10)).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, minHeight: 42, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel("Preview \(input.url.lastPathComponent)")
             VStack(alignment: .leading, spacing: 4) {
                 Text("Copies").font(.system(size: 9)).foregroundStyle(.secondary)
-                TextField("Copies", value: copies, format: .number.grouping(.never))
-                    .textFieldStyle(.roundedBorder).frame(width: 42)
-                    .accessibilityLabel("Copies of \(input.url.lastPathComponent)")
+                CopiesField(model: model, id: input.id, width: 42)
             }.disabled(queue.occupied || model.requiresSubmissionReview)
             Menu {
                 ForEach(queue.groups.filter { $0.id != group.id }) { target in
@@ -216,16 +229,7 @@ private struct QueueDocumentRow: View {
                 .accessibilityLabel("Drag \(input.url.lastPathComponent)")
                 .onDrag { QueueDocumentDrag.provider(group: group.id, input: input.id) }
                 .disabled(queue.occupied || model.requiresSubmissionReview)
-        }.padding(10)
-            .background(targeted || (queue.selectedID == group.id && model.selectedPreviewID == input.id) ? queueAccent.opacity(0.07) : .clear)
-            .onDrop(of: [QueueDocumentDrag.type], isTargeted: $targeted) { providers in
-                guard !queue.occupied, let provider = providers.first else { return false }
-                QueueDocumentDrag.load(provider) { source, id in
-                    if source == group.id { model.move(id, to: input.id) }
-                    else { queue.moveDocument(id, from: source, to: group.id); model.move(id, to: input.id) }
-                }
-                return true
-            }
+        }
     }
 }
 

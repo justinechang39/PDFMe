@@ -41,6 +41,13 @@ final class PrintQueueModel: ObservableObject {
         let pending = groups.filter { !$0.model.inputs.isEmpty }
         return !occupied && !pending.isEmpty && pending.allSatisfy { $0.model.canPrint }
     }
+    /// The first unfinished page range or copy count, which blocks every group from printing.
+    var inputProblem: String? {
+        for (index, group) in groups.enumerated() {
+            if let problem = group.model.inputProblem { return "Group \(index + 1): \(problem)" }
+        }
+        return nil
+    }
     private func observe(_ group: PrintGroup) {
         subscriptions[group.id] = group.model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         group.model.catalogChanged = { [weak self, weak model = group.model] in
@@ -80,6 +87,8 @@ final class PrintQueueModel: ObservableObject {
               let target = groups.first(where: { $0.id == targetID })?.model,
               !source.requiresSubmissionReview, !target.requiresSubmissionReview,
               let index = source.inputs.firstIndex(where: { $0.id == id }) else { return }
+        // Page selection and copies travel inside PrintInput; an unfinished copy edit reverts.
+        source.finishCopiesEdit(for: id)
         let input = source.inputs.remove(at: index)
         if target.inputs.isEmpty { target.clear() }
         target.inputs.append(input); target.selectPreview(id); selectedID = targetID
@@ -111,7 +120,7 @@ final class PrintQueueModel: ObservableObject {
         if panel.runModal() == .OK { accept(panel.urls) }
     }
     func printAll() {
-        guard canPrint else { inform("Check each group’s printer and settings before printing.", error: true); return }
+        guard canPrint else { inform(inputProblem.map { "\($0) Nothing was sent." } ?? "Check each group’s printer and settings before printing.", error: true); return }
         let batch = groups.filter { !$0.model.inputs.isEmpty }
         isPrinting = true; stopRequested = false; message = nil
         // Lock every entry point, including the shared menu bar model.

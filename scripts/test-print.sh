@@ -2,10 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p work
-swiftc -parse-as-library Sources/PDFMeCore/Printing.swift Sources/PDFMeCore/Printers.swift scripts/PrinterQueueChecks.swift -o work/PrinterQueueChecks
+swiftc -parse-as-library Sources/PDFMeCore/Printing.swift Sources/PDFMeCore/PageSelection.swift Sources/PDFMeCore/Printers.swift scripts/PrinterQueueChecks.swift -o work/PrinterQueueChecks
 work/PrinterQueueChecks
 qa_dir="$(mktemp -d "$PWD/work/print-qa-XXXXXX")"
-swiftc -parse-as-library Sources/PDFMeCore/Printing.swift Sources/PDFMeCore/Printers.swift scripts/PrintChecks.swift -o work/PrintChecks
+swiftc -parse-as-library Sources/PDFMeCore/Printing.swift Sources/PDFMeCore/PageSelection.swift Sources/PDFMeCore/Printers.swift scripts/PrintChecks.swift -o work/PrintChecks
 work/PrintChecks "$qa_dir"
 swift build
 bin_dir="$(swift build --show-bin-path)"
@@ -17,3 +17,7 @@ python3 scripts/ipp-wire-check.py work/DirectPrintChecks "$qa_dir/01 Sample A.pd
 
 swiftc -parse-as-library -I "$bin_dir/Modules" "$bin_dir/PDFMeCore.build/"*.swift.o Sources/PDFMe/PrintModel.swift Sources/PDFMe/PrintQueueModel.swift Sources/PDFMe/FinderPrintService.swift scripts/PrintQueueChecks.swift -o work/PrintQueueChecks
 work/PrintQueueChecks "$qa_dir"
+
+# Hidden SwiftUI/AppKit controls exercise real field editing without touching the installed app.
+swiftc -parse-as-library -target "$(uname -m)-apple-macosx13.0" -I "$bin_dir/Modules" "$bin_dir/PDFMeCore.build/"*.swift.o Sources/PDFMe/PrintModel.swift Sources/PDFMe/PrintInputControls.swift scripts/InputControlChecks.swift -o work/InputControlChecks
+work/InputControlChecks

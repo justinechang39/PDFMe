@@ -60,8 +60,15 @@ public struct PrintInput: Identifiable, Sendable {
     public let url: URL
     public let pages: Int
     public var copies: Int
-    public init(url: URL, pages: Int, id: UUID = UUID(), copies: Int = 1) {
-        self.id = id; self.url = url; self.pages = pages; self.copies = copies
+    /// Belongs to this document, so it follows the PDF when reordered or moved between groups.
+    public var pageSelection: PageSelection
+    public init(url: URL, pages: Int, id: UUID = UUID(), copies: Int = 1, pageSelection: PageSelection = .all) {
+        self.id = id; self.url = url; self.pages = pages; self.copies = copies; self.pageSelection = pageSelection
+    }
+    /// Zero-based source pages to print, in document order.
+    public func selectedPages() throws -> [Int] {
+        do { return try pageSelection.pages(of: pages) }
+        catch { throw PrintError.message("Check the pages for \(url.lastPathComponent): \(error.localizedDescription)") }
     }
 }
 public enum PrintError: LocalizedError {
@@ -86,17 +93,27 @@ public struct PrintPlan: Sendable {
         }
     }
     public init(pageCounts: [Int], template: PrintTemplate, copies: [Int]? = nil) throws {
+        guard pageCounts.allSatisfy({ $0 > 0 }) else { throw PrintError.message("Add at least one readable PDF.") }
+        try self.init(pages: pageCounts.map { Array(0..<$0) }, template: template, copies: copies)
+    }
+    /// Uses each input's page selection and copy count, exactly as the composer prints them.
+    public init(inputs: [PrintInput], template: PrintTemplate) throws {
+        try self.init(pages: inputs.map { try $0.selectedPages() }, template: template, copies: inputs.map(\.copies))
+    }
+    /// `pages` lists the zero-based source pages for each document. Selection happens
+    /// before n-up, duplex blanks, and collated copies are laid out.
+    public init(pages: [[Int]], template: PrintTemplate, copies: [Int]? = nil) throws {
         try template.validate()
-        guard !pageCounts.isEmpty, pageCounts.allSatisfy({ $0 > 0 }) else { throw PrintError.message("Add at least one readable PDF.") }
-        let counts = copies ?? Array(repeating: 1, count: pageCounts.count)
-        guard counts.count == pageCounts.count, counts.allSatisfy({ (1...999).contains($0) }) else {
+        guard !pages.isEmpty, pages.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0 >= 0 } }) else { throw PrintError.message("Add at least one readable PDF.") }
+        let counts = copies ?? Array(repeating: 1, count: pages.count)
+        guard counts.count == pages.count, counts.allSatisfy({ CopyCount.range.contains($0) }) else {
             throw PrintError.message("Choose between 1 and 999 copies for each PDF.")
         }
         var result: [[PrintPageReference]] = []
         var pending: [PrintPageReference] = []
-        for (document, count) in pageCounts.enumerated() {
+        for (document, selected) in pages.enumerated() {
             for copy in 0..<counts[document] {
-                for page in 0..<count {
+                for page in selected {
                     pending.append(PrintPageReference(document: document, page: page))
                     if pending.count == template.pagesPerSide { result.append(pending); pending = [] }
                 }
@@ -150,8 +167,27 @@ public enum PrintComposer {
                                progress: @Sendable (Int, Int) -> Void = { _, _ in }) throws -> PrintPlan {
         let inputs = try inspect(urls)
         let plan = try PrintPlan(pageCounts: inputs.map(\.pages), template: template, copies: copies)
-        let documents = try Dictionary(uniqueKeysWithValues: inputs.enumerated().map { index, input -> (Int, PDFDocument) in
-            guard let document = PDFDocument(url: input.url) else { throw PrintError.message("A source PDF changed. Add the files again.") }
+        try compose(plan, urls: urls, template: template, output: output, progress: progress)
+        return plan
+    }
+
+    /// Compose reviewed inputs with their page selections and copies. The page counts must
+    /// still match what was reviewed; otherwise ranges such as `21-end` could change meaning.
+    public static func prepare(inputs: [PrintInput], template: PrintTemplate, output: URL,
+                               progress: @Sendable (Int, Int) -> Void = { _, _ in }) throws -> PrintPlan {
+        let current = try inspect(inputs.map(\.url))
+        for (reviewed, actual) in zip(inputs, current) where reviewed.pages != actual.pages {
+            throw PrintError.message("\(reviewed.url.lastPathComponent) changed after it was added. Remove it and add it again.")
+        }
+        let plan = try PrintPlan(inputs: inputs, template: template)
+        try compose(plan, urls: inputs.map(\.url), template: template, output: output, progress: progress)
+        return plan
+    }
+
+    private static func compose(_ plan: PrintPlan, urls: [URL], template: PrintTemplate, output: URL,
+                                progress: @Sendable (Int, Int) -> Void) throws {
+        let documents = try Dictionary(uniqueKeysWithValues: urls.enumerated().map { index, url -> (Int, PDFDocument) in
+            guard let document = PDFDocument(url: url) else { throw PrintError.message("A source PDF changed. Add the files again.") }
             return (index, document)
         })
         var media = CGRect(origin: .zero, size: template.pageSize)
@@ -168,7 +204,6 @@ public enum PrintComposer {
             progress(sideIndex + 1, plan.sides.count)
         }
         complete = true
-        return plan
     }
 
     /// Render only the requested side, using the same composition path as printing.

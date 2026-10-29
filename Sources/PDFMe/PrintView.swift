@@ -109,43 +109,41 @@ struct PrintReviewView: View {
                 }.frame(maxWidth: .infinity).padding(.vertical, 24)
             } else {
                 ForEach(Array(model.inputs.enumerated()), id: \.element.id) { index, input in
-                    HStack(spacing: 8) {
-                        Button { model.selectPreview(input.id) } label: {
-                            HStack(spacing: 8) {
-                                Text("\(index + 1)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).frame(width: 16)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(input.url.lastPathComponent).font(.system(size: 12, weight: .medium)).lineLimit(1).help(input.url.path)
-                                    Text("\(input.pages) \(input.pages == 1 ? "page" : "pages")").font(.system(size: 10)).foregroundStyle(.secondary)
-                                }
-                            }.frame(maxWidth: .infinity, minHeight: 36, alignment: .leading).contentShape(Rectangle())
-                        }.accessibilityLabel("Preview \(input.url.lastPathComponent)")
-                            .accessibilityAddTraits(model.selectedPreviewID == input.id ? .isSelected : [])
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Copies").font(.system(size: 10)).foregroundStyle(.secondary)
-                            HStack(spacing: 4) {
-                                TextField("Copies", value: copyCount(for: input), format: .number.grouping(.never))
-                                    .textFieldStyle(.roundedBorder).frame(width: 38)
-                                    .accessibilityLabel("Copies of \(input.url.lastPathComponent)")
-                                Stepper("Copies", value: copyCount(for: input), in: 1...999)
-                                    .labelsHidden().controlSize(.small)
-                                    .accessibilityLabel("Copies of \(input.url.lastPathComponent)")
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Button { model.selectPreview(input.id) } label: {
+                                HStack(spacing: 8) {
+                                    Text("\(index + 1)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).frame(width: 16)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(input.url.lastPathComponent).font(.system(size: 12, weight: .medium)).lineLimit(1).help(input.url.path)
+                                        Text("\(input.pages) \(input.pages == 1 ? "page" : "pages")").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    }
+                                }.frame(maxWidth: .infinity, minHeight: 36, alignment: .leading).contentShape(Rectangle())
+                            }.accessibilityLabel("Preview \(input.url.lastPathComponent)")
+                                .accessibilityAddTraits(model.selectedPreviewID == input.id ? .isSelected : [])
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Copies").font(.system(size: 10)).foregroundStyle(.secondary)
+                                CopiesField(model: model, id: input.id, showsStepper: true, width: 38)
                             }
+                            Button { model.remove(input.id) } label: { Image(systemName: "xmark") }.help("Remove PDF").accessibilityLabel("Remove \(input.url.lastPathComponent)")
+                            Image(systemName: "line.3.horizontal")
+                                .foregroundStyle(.secondary).padding(.vertical, 10).padding(.horizontal, 3)
+                                .contentShape(Rectangle()).help("Drag to reorder")
+                                .accessibilityLabel("Reorder \(input.url.lastPathComponent)")
+                                .accessibilityAction(named: "Move up") { model.move(index, by: -1) }
+                                .accessibilityAction(named: "Move down") { model.move(index, by: 1) }
+                                .onDrag {
+                                    let provider = NSItemProvider()
+                                    provider.registerDataRepresentation(forTypeIdentifier: PrintRowDropDelegate.type, visibility: .ownProcess) { completion in
+                                        completion(Data(input.id.uuidString.utf8), nil)
+                                        return nil
+                                    }
+                                    return provider
+                                }
                         }
-                        Button { model.remove(input.id) } label: { Image(systemName: "xmark") }.help("Remove PDF").accessibilityLabel("Remove \(input.url.lastPathComponent)")
-                        Image(systemName: "line.3.horizontal")
-                            .foregroundStyle(.secondary).padding(.vertical, 10).padding(.horizontal, 3)
-                            .contentShape(Rectangle()).help("Drag to reorder")
-                            .accessibilityLabel("Reorder \(input.url.lastPathComponent)")
-                            .accessibilityAction(named: "Move up") { model.move(index, by: -1) }
-                            .accessibilityAction(named: "Move down") { model.move(index, by: 1) }
-                            .onDrag {
-                                let provider = NSItemProvider()
-                                provider.registerDataRepresentation(forTypeIdentifier: PrintRowDropDelegate.type, visibility: .ownProcess) { completion in
-                                    completion(Data(input.id.uuidString.utf8), nil)
-                                    return nil
-                                }
-                                return provider
-                            }
+                        // Second row keeps copies, remove, and the drag handle uncrowded.
+                        PageSelectionControls(model: model, id: input.id) { model.selectPreview(input.id) }
+                            .padding(.leading, 24)
                     }.font(.system(size: 10)).buttonStyle(.plain).padding(12).disabled(model.occupied)
                         .background(reorderTarget == input.id || model.selectedPreviewID == input.id ? accent.opacity(0.1) : Color.clear)
                         .onDrop(of: [PrintRowDropDelegate.type], delegate: PrintRowDropDelegate(model: model, target: input.id, highlighted: $reorderTarget))
@@ -161,11 +159,6 @@ struct PrintReviewView: View {
             loadFileURLs(providers) { urls in model.accept(urls) }
             return true
         }
-    }
-
-    private func copyCount(for input: PrintInput) -> Binding<Int> {
-        Binding(get: { model.inputs.first(where: { $0.id == input.id })?.copies ?? input.copies },
-                set: { model.setCopies($0, for: input.id) })
     }
 
     private var settings: some View {
@@ -266,7 +259,9 @@ struct PrintActionBar: View {
                 if !model.submitting { ProgressView(value: model.progress) }
             } else {
                 HStack {
-                    if let plan = model.plan {
+                    if let problem = model.inputProblem {
+                        Text(problem).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+                    } else if let plan = model.plan {
                         Text("\(plan.sheetCount) \(plan.sheetCount == 1 ? "sheet" : "sheets") total").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()

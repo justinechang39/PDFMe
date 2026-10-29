@@ -61,6 +61,22 @@ struct PrintPreviewChecks {
         _ = try await waitForPreview(model)
         try check(model.previewData != nil, "closing one of two preview surfaces keeps the other preview live")
         model.setPreviewVisible(false)
+
+        // The inline preview uses the same selected pages as the prepared job.
+        let ranged = PrintModel()
+        ranged.template = PrintTemplate(printAsImage: false)
+        ranged.inputs = inputs
+        ranged.setPreviewVisible(true)
+        ranged.setPageSelection(.custom("3"), for: inputs[0].id)
+        let third = try await waitForPreview(ranged)
+        try check(ranged.previewIndices.count == 1 && third.string?.contains("A3") == true && third.string?.contains("A1") != true, "custom pages limit the preview to the selected PDF page")
+        ranged.setPageSelection(.custom("2-4"), for: inputs[0].id)
+        try await Task.sleep(nanoseconds: 350_000_000)
+        try check(ranged.previewIndices.isEmpty && ranged.previewData == nil && ranged.inputProblem != nil && !ranged.canPreview, "an invalid range shows no stale preview and blocks preview export")
+        ranged.setPageSelection(PageSelection(isCustom: false, text: "2-4"), for: inputs[0].id)
+        _ = try await waitForPreview(ranged)
+        try check(ranged.previewIndices.count == 3 && ranged.inputProblem == nil, "switching back to All previews every page")
+        ranged.setPreviewVisible(false)
         print("All preview state checks passed. No print jobs submitted.")
     }
 }

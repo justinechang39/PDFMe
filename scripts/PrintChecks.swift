@@ -43,6 +43,64 @@ struct PrintChecks {
         context.drawPDFPage(cgPage)
         return Data(bytes: context.data!, count: width * height * 4)
     }
+    /// Page labels such as A1 or C21 drawn on each fixture page, read from a prepared side.
+    static func labels(_ page: PDFPage) -> Set<String> {
+        let text = page.string ?? ""
+        let regex = try! NSRegularExpression(pattern: "\\b[A-Z][0-9]+\\b")
+        return Set(regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).map { String(text[Range($0.range, in: text)!]) })
+    }
+    static func rejects(_ text: String, pageCount: Int) -> Bool {
+        (try? PageSelection.parse(text, pageCount: pageCount)) == nil && PageSelection.custom(text).validationMessage(pageCount: pageCount) != nil
+    }
+    static func pageRangeChecks(root: URL, a: URL, b: URL) throws {
+        let c = root.appendingPathComponent("03 Sample C.pdf")
+        makePDF(c, prefix: "C", pages: 30)
+        func oneBased(_ text: String) -> [Int]? { try? PageSelection.parse(text, pageCount: 30).map { $0 + 1 } }
+        try check(oneBased("1-15, 21-30") == Array(1...15) + Array(21...30), "disjoint ranges use 1-based PDF page numbers")
+        try check(oneBased("21-end") == Array(21...30) && oneBased("end") == [30] && oneBased("28 – END") == [28, 29, 30], "end means the last PDF page")
+        try check(oneBased(" 4 ") == [4] && oneBased("2–3,5—6, 8 - 9") == [2, 3, 5, 6, 8, 9], "single pages, whitespace, en and em dashes")
+        try check(oneBased("20-22, 1, 3-5, 4-9, 1") == [1, 3, 4, 5, 6, 7, 8, 9, 20, 21, 22], "overlaps are deduplicated and kept in document order")
+        let invalid = ["", " ", "1,", ",1", "1,,2", "0", "-3", "3-", "1--3", "1-2-3", "9-4", "end-3", "31", "29-31", "1.5", "+2", "a", "1 2", "١",
+                       "99999999999999999999999999", "2-99999999999999999999999", String(repeating: "9", count: 5000)]
+        for text in invalid { try check(rejects(text, pageCount: 30), "invalid page entry rejected: \(text.prefix(20).debugDescription)") }
+        try check(CopyCount.parse("4") == 4 && [" ", "", "0", "1000", "4a", "4.0", "-1"].allSatisfy { CopyCount.parse($0) == nil }, "copy text accepts only 1–999")
+
+        // Actual prepared content: selection before 2-up, duplex blanks, and collated copies.
+        let template = PrintTemplate(orientation: .landscape, duplex: .shortEdge, pagesPerSide: 2, printAsImage: false)
+        var inputs = try PrintComposer.inspect([a, c, b])
+        inputs[0].pageSelection = .custom("3, 1"); inputs[0].copies = 2
+        inputs[1].pageSelection = .custom("1-3, 21-22, 2, 29-end")
+        inputs[2].pageSelection = .custom("2")
+        let output = root.appendingPathComponent("Page ranges 2-up duplex.pdf")
+        let plan = try PrintComposer.prepare(inputs: inputs, template: template, output: output)
+        let pdf = PDFDocument(url: output)!
+        let expected: [Set<String>] = [["A1", "A3"], [], ["A1", "A3"], [], ["C1", "C2"], ["C3", "C21"], ["C22", "C29"], ["C30"], ["B2"], []]
+        try check(pdf.pageCount == expected.count && plan.sides.count == expected.count && plan.sheetCount == 5, "page ranges change the actual side and sheet count")
+        try check((0..<pdf.pageCount).map { labels(pdf.page(at: $0)!) } == expected, "prepared PDF prints exactly the selected pages, in document order, before 2-up, duplex, and copies")
+        for index in plan.sides.indices {
+            let data = try PrintComposer.previewSide(urls: inputs.map(\.url), side: plan.sides[index], template: template)
+            let preview = PDFDocument(data: data)!
+            try check(pixels(preview.page(at: 0)!) == pixels(pdf.page(at: index)!), "page-range preview matches printed side \(index + 1)")
+        }
+        var single = PrintTemplate(printAsImage: false)
+        single.startEachFileOnNewSheet = false
+        let simple = root.appendingPathComponent("Page ranges 1-up.pdf")
+        var tail = try PrintComposer.inspect([c]); tail[0].pageSelection = .custom("21-end")
+        _ = try PrintComposer.prepare(inputs: tail, template: single, output: simple)
+        let simplePDF = PDFDocument(url: simple)!
+        try check(simplePDF.pageCount == 10 && (0..<10).allSatisfy { labels(simplePDF.page(at: $0)!) == ["C\($0 + 21)"] }, "21-end prints PDF pages 21 through 30 one per side")
+        tail[0].pageSelection.isCustom = false
+        _ = try PrintComposer.prepare(inputs: tail, template: single, output: simple)
+        try check(PDFDocument(url: simple)!.pageCount == 30, "switching back to All prints every page, even with custom text retained")
+
+        var bad = try PrintComposer.inspect([a]); bad[0].pageSelection = .custom("2-4")
+        let blocked = root.appendingPathComponent("Blocked range.pdf")
+        do { _ = try PrintComposer.prepare(inputs: bad, template: single, output: blocked); throw PrintError.message("FAIL: invalid range composed") }
+        catch PrintError.message(let text) { try check(!text.hasPrefix("FAIL") && text.contains("01 Sample A.pdf") && !FileManager.default.fileExists(atPath: blocked.path), "out-of-range selection blocks composition with the file name") }
+        let stale = [PrintInput(url: a, pages: 5, pageSelection: .custom("5"))]
+        do { _ = try PrintComposer.prepare(inputs: stale, template: single, output: blocked); throw PrintError.message("FAIL: changed PDF composed") }
+        catch PrintError.message(let text) { try check(!text.hasPrefix("FAIL") && text.contains("changed"), "a PDF whose page count changed after review is not printed") }
+    }
     static func main() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -85,6 +143,7 @@ struct PrintChecks {
         try check(sharedText.contains("A3") && sharedText.contains("B1"), "preview preserves pages from both PDFs on a shared side")
         let packedCopies = try PrintPlan(pageCounts: [1, 1], template: PrintTemplate(duplex: .shortEdge, pagesPerSide: 2, startEachFileOnNewSheet: false), copies: [2, 1])
         try check(packedCopies.sheetCount == 2 && packedCopies.sides[1].isEmpty && packedCopies.sides[2].map(\.document) == [0, 1], "continuous files still keep repeat copies on separate sheets")
+        try pageRangeChecks(root: root, a: a, b: b)
         for counts in [[0], [1000], [], [1, 2]] {
             do { _ = try PrintPlan(pageCounts: [1], template: template, copies: counts); throw PrintError.message("FAIL: invalid copies accepted") }
             catch PrintError.message(let text) { try check(!text.hasPrefix("FAIL"), "invalid copy counts rejected: \(counts)") }

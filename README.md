@@ -50,11 +50,19 @@ Click **Print PDF** below Create PDF, or drop one or more PDFs on that target or
 
 1. Add the PDFs you want to print.
 2. Choose a saved template and the printer. Adjust settings for this job if needed.
-3. Set **Copies** on each PDF row. Drag the handle on the right to change the file order; each document’s copies stay together.
+3. Set **Copies** on each PDF row. Drag the handle on the right to change the file order; each document’s copies stay together. Under the file name, **Pages** prints **All** pages by default; choose **Custom** to print only some of them (see [Page ranges](#page-ranges)).
 4. Click a PDF in the list to see its sheet layout on the right. Use the arrows to inspect its printed sides. **Open in Preview** opens the complete batch in macOS Preview.
 5. Click **Print** to send one job to the selected printer.
 
 After successful submission, the PDF list and its copy counts are cleared, disabling Print until you add new files. Saved templates remain available, along with the submitted job’s status and cancellation controls. Previewing or a failure before upload keeps the files for review. An uncertain direct upload also clears the batch to prevent accidental duplicates and retains its printer job number.
+
+### Page ranges
+
+Choose **Custom** under a PDF and enter pages such as `1-15, 21-30` or `21-end`. Numbers are the PDF’s own page numbers, starting at 1, not printed folio numbers. Separate single pages and inclusive ranges with commas; spaces, en dashes, and em dashes are fine, and `end` means the last page. Overlapping entries print once, always in the PDF’s original order. The row shows how many pages are selected.
+
+Zero, negative, descending, past-the-end, or malformed entries show an inline error. An unfinished range or an empty or invalid copies field blocks printing and preview export for that group. **Print all groups** stays disabled until every group is valid, so the batch cannot start with an invalid selection. PDFMe never falls back to all pages. Switching back to **All** prints every page again. A range belongs to its PDF and moves with it between groups. Pages are selected before pages per side, duplex blank backs, and copies are laid out, and the preview, sheet count, and printed job all use the same pages. Ranges are not saved in templates.
+
+A copies field can be cleared and retyped; valid counts from 1 to 999 apply as you type. Leaving the field or pressing Return with an empty or invalid value restores the last valid count.
 
 ### Desktop Print Queue and Finder
 
@@ -65,7 +73,7 @@ In Finder, select one or more PDFs and choose **Add to PDFMe Print Queue** direc
 1. Use **Add group** to create a group from a saved template.
 2. Drop PDFs on a group, or select it and choose **Add PDFs**.
 3. Select a group to edit its settings on the right. Changes apply to all its documents. Saving a template updates the shared catalog; it does not overwrite another group’s current settings.
-4. Set each document’s **Copies**. Drag its handle within or between groups; its menu provides the same move actions without dragging.
+4. Set each document’s **Copies** and, if needed, its **Pages**. Drag its handle within or between groups; its menu provides the same move actions without dragging.
 5. Click a document to see its composed sheet preview. **Open group in Preview** shows that group’s complete layout.
 6. Choose **Print all groups**. PDFMe prepares and submits one group at a time, with one job per group. It waits for acceptance before sending the next, not for physical completion. Different groups may use different installed printers. Groups targeting the same printer are submitted in displayed order; the printer ultimately controls scheduling.
 
@@ -116,7 +124,7 @@ Use **Manage templates** (the sliders icon) to name a template, **Save** changes
 - Print as image and image resolution (150, 300, or 600 dpi).
 - Whether each PDF starts on a fresh physical sheet.
 
-Unsaved setting changes affect the current job only. Copy counts are set separately for each PDF in the current job and are not stored in templates. A missing saved printer must be explicitly replaced; PDFMe does not silently redirect jobs to a different printer. Unsupported paper, color, or duplex options block submission instead of silently changing the template.
+Unsaved setting changes affect the current job only. Copy counts and page ranges are set separately for each PDF in the current job and are not stored in templates. A missing saved printer must be explicitly replaced; PDFMe does not silently redirect jobs to a different printer. Unsupported paper, color, or duplex options block submission instead of silently changing the template.
 
 ### Layout and collation
 
@@ -124,7 +132,7 @@ For example, with two copies of A and one copy of B, the job contains **A, A, B*
 
 Two-up places pages side by side on each printed side; it is not booklet imposition. Landscape and short-edge duplex normally produce the expected left/right page turning for this arrangement. Printer drivers can differ, so test one sheet before a large run.
 
-PDFMe composes the sheet layout itself with an 18-point outer margin and 12-point gap, preserving source page aspect ratios, crop boxes, rotations, and printable annotations. In macOS mode the printer fits the prepared sheet to its printable area, so the physical scale can differ slightly from the preview. Direct mode requests no extra scaling when supported. This release does not offer actual-size technical drawing output, custom margins, finishing/stapling, manual duplex, or page-range selection.
+PDFMe composes the sheet layout itself with an 18-point outer margin and 12-point gap, preserving source page aspect ratios, crop boxes, rotations, and printable annotations. In macOS mode the printer fits the prepared sheet to its printable area, so the physical scale can differ slightly from the preview. Direct mode requests no extra scaling when supported. This release does not offer actual-size technical drawing output, custom margins, finishing/stapling, or manual duplex.
 
 **Print as image** rasterizes each composed side at the selected resolution before spooling. This can help with PDFs whose fonts or graphics print incorrectly, but can be slower and produce larger jobs. It preserves the original files. Extremely large paper/resolution combinations are blocked with a prompt to lower resolution to limit memory usage.
 
@@ -223,7 +231,7 @@ python3 scripts/test-finder-sandbox.py
 swift test
 ```
 
-`scripts/test.sh` requires LibreOffice in `/Applications` or `~/Applications`. `scripts/test-print.sh` does not need LibreOffice; it uses Swift, Python 3, and the built-in macOS printing tools. Both scripts work with Command Line Tools alone and generate fixtures under ignored `work/`. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer. Queue checks exercise real composition with a mock submission handler, serialized imports, independent group settings, per-file copy counts, sequential uploads, printer backpressure between groups, safe retries after preflight failures, partial failures, uncertain jobs, stopping, and Finder pasteboards.
+`scripts/test.sh` requires LibreOffice in `/Applications` or `~/Applications`. `scripts/test-print.sh` does not need LibreOffice; it uses Swift, Python 3, and the built-in macOS printing tools. Both scripts work with Command Line Tools alone and generate fixtures under ignored `work/`. Print checks submit only to simulated IPP endpoints and never require or send jobs to a physical printer. Queue checks exercise real composition with a mock submission handler, serialized imports, independent group settings, per-file copy counts and page ranges, sequential uploads, printer backpressure between groups, safe retries after preflight failures, partial failures, uncertain jobs, stopping, and Finder pasteboards.
 
 `test-finder-sandbox.py` temporarily registers a separate receiver app in `~/Applications`, then removes it. It uses the production handoff and service parser with the extension’s actual sandbox entitlements. It verifies that the sender cannot read the PDFs, but the receiver gets both paths in order and can open the documents. The test does not contact PDFMe’s queue or a printer. Generated test fixtures remain under ignored `work/`.
 
